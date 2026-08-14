@@ -18,5 +18,4 @@ use Civi\Warden\Tests\Support\RoleMapperContract;
  * @covers \Civi\Warden\Pkce
  * @covers \Civi\Warden\Value
  */
-final class RoleMapperTest extends RoleMapperContract {
-}
+final class RoleMapperTest extends RoleMapperContract {}

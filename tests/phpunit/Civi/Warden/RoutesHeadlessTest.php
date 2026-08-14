@@ -85,14 +85,18 @@ final class RoutesHeadlessTest extends TestCase implements HeadlessInterface, Tr
   }
 
   private function discoveryResponse(): Response {
-    return new Response(200, [], (string) json_encode([
-      'issuer' => self::ISSUER,
-      'authorization_endpoint' => self::ISSUER . '/auth',
-      'token_endpoint' => self::ISSUER . '/token',
-      'jwks_uri' => self::ISSUER . '/certs',
-      'id_token_signing_alg_values_supported' => ['RS256'],
-      'code_challenge_methods_supported' => ['S256'],
-    ]));
+    return new Response(
+      200,
+      [],
+      (string) json_encode([
+        'issuer' => self::ISSUER,
+        'authorization_endpoint' => self::ISSUER . '/auth',
+        'token_endpoint' => self::ISSUER . '/token',
+        'jwks_uri' => self::ISSUER . '/certs',
+        'id_token_signing_alg_values_supported' => ['RS256'],
+        'code_challenge_methods_supported' => ['S256'],
+      ]),
+    );
   }
 
   private function provider(array $overrides = []): Provider {
@@ -201,7 +205,11 @@ final class RoutesHeadlessTest extends TestCase implements HeadlessInterface, Tr
     $this->captureRedirect(ReturnPage::handle(...));
 
     $audit = WardenAudit::get(FALSE)->addWhere('reason', '=', 'provider_error')->execute()->single();
-    self::assertSame('scriptalertscript', $audit['detail'], 'only lowercase letters and underscores survive — digits and punctuation are stripped too');
+    self::assertSame(
+      'scriptalertscript',
+      $audit['detail'],
+      'only lowercase letters and underscores survive — digits and punctuation are stripped too',
+    );
   }
 
   public function testTheCallbackRefusesWhenWardenIsDisabled(): void {

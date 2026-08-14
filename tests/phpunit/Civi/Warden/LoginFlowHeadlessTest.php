@@ -73,14 +73,18 @@ final class LoginFlowHeadlessTest extends TestCase implements HeadlessInterface,
   }
 
   private function discoveryResponse(): Response {
-    return new Response(200, [], (string) json_encode([
-      'issuer' => self::ISSUER,
-      'authorization_endpoint' => self::ISSUER . '/auth',
-      'token_endpoint' => self::ISSUER . '/token',
-      'jwks_uri' => self::ISSUER . '/certs',
-      'id_token_signing_alg_values_supported' => ['RS256'],
-      'code_challenge_methods_supported' => ['S256'],
-    ]));
+    return new Response(
+      200,
+      [],
+      (string) json_encode([
+        'issuer' => self::ISSUER,
+        'authorization_endpoint' => self::ISSUER . '/auth',
+        'token_endpoint' => self::ISSUER . '/token',
+        'jwks_uri' => self::ISSUER . '/certs',
+        'id_token_signing_alg_values_supported' => ['RS256'],
+        'code_challenge_methods_supported' => ['S256'],
+      ]),
+    );
   }
 
   private function jwksResponse(): Response {
@@ -89,18 +93,22 @@ final class LoginFlowHeadlessTest extends TestCase implements HeadlessInterface,
     $details = openssl_pkey_get_details($key);
     self::assertIsArray($details);
 
-    return new Response(200, [], (string) json_encode([
-      'keys' => [
-        [
-          'kty' => 'RSA',
-          'kid' => JwtFixture::KID,
-          'use' => 'sig',
-          'alg' => 'RS256',
-          'n' => rtrim(strtr(base64_encode((string) $details['rsa']['n']), '+/', '-_'), '='),
-          'e' => rtrim(strtr(base64_encode((string) $details['rsa']['e']), '+/', '-_'), '='),
+    return new Response(
+      200,
+      [],
+      (string) json_encode([
+        'keys' => [
+          [
+            'kty' => 'RSA',
+            'kid' => JwtFixture::KID,
+            'use' => 'sig',
+            'alg' => 'RS256',
+            'n' => rtrim(strtr(base64_encode((string) $details['rsa']['n']), '+/', '-_'), '='),
+            'e' => rtrim(strtr(base64_encode((string) $details['rsa']['e']), '+/', '-_'), '='),
+          ],
         ],
-      ],
-    ]));
+      ]),
+    );
   }
 
   /**
@@ -109,12 +117,16 @@ final class LoginFlowHeadlessTest extends TestCase implements HeadlessInterface,
   private function tokenResponse(string $nonce, array $claimOverrides = [], string $keyName = 'a'): Response {
     $claims = array_merge(JwtFixture::claims(time(), $nonce), ['aud' => JwtFixture::CLIENT_ID], $claimOverrides);
 
-    return new Response(200, ['Content-Type' => 'application/json'], (string) json_encode([
-      'access_token' => self::TEST_ACCESS_TOKEN,
-      'token_type' => 'Bearer',
-      'expires_in' => 300,
-      'id_token' => JwtFixture::sign($claims, 'RS256', JwtFixture::KID, $keyName),
-    ]));
+    return new Response(
+      200,
+      ['Content-Type' => 'application/json'],
+      (string) json_encode([
+        'access_token' => self::TEST_ACCESS_TOKEN,
+        'token_type' => 'Bearer',
+        'expires_in' => 300,
+        'id_token' => JwtFixture::sign($claims, 'RS256', JwtFixture::KID, $keyName),
+      ]),
+    );
   }
 
   private function provider(array $overrides = []): Provider {
@@ -307,10 +319,14 @@ final class LoginFlowHeadlessTest extends TestCase implements HeadlessInterface,
   public function testATokenResponseWithoutAnIdTokenIsRefused(): void {
     [, $state] = $this->begin();
     $this->stubHttp([
-      new Response(200, ['Content-Type' => 'application/json'], (string) json_encode([
-        'access_token' => self::TEST_ACCESS_TOKEN,
-        'token_type' => 'Bearer',
-      ])),
+      new Response(
+        200,
+        ['Content-Type' => 'application/json'],
+        (string) json_encode([
+          'access_token' => self::TEST_ACCESS_TOKEN,
+          'token_type' => 'Bearer',
+        ]),
+      ),
     ]);
 
     try {

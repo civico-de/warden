@@ -2,6 +2,7 @@
 # build can be reproduced. ckconform fails a repo that ignores a lockfile.
 /vendor/
 node_modules/
+/.ckrelease/
 
 # PHP tooling caches
 .phpunit.result.cache

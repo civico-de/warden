@@ -47,14 +47,18 @@ final class StatusCheckHeadlessTest extends TestCase implements HeadlessInterfac
   }
 
   private function discoveryResponse(array $overrides = []): Response {
-    return new Response(200, [], (string) json_encode(array_merge([
-      'issuer' => self::ISSUER,
-      'authorization_endpoint' => self::ISSUER . '/auth',
-      'token_endpoint' => self::ISSUER . '/token',
-      'jwks_uri' => self::ISSUER . '/certs',
-      'id_token_signing_alg_values_supported' => ['RS256'],
-      'code_challenge_methods_supported' => ['S256'],
-    ], $overrides)));
+    return new Response(
+      200,
+      [],
+      (string) json_encode(array_merge([
+        'issuer' => self::ISSUER,
+        'authorization_endpoint' => self::ISSUER . '/auth',
+        'token_endpoint' => self::ISSUER . '/token',
+        'jwks_uri' => self::ISSUER . '/certs',
+        'id_token_signing_alg_values_supported' => ['RS256'],
+        'code_challenge_methods_supported' => ['S256'],
+      ], $overrides)),
+    );
   }
 
   private function provider(array $overrides = []): Provider {
@@ -170,7 +174,10 @@ final class StatusCheckHeadlessTest extends TestCase implements HeadlessInterfac
     $uri = RedirectUri::get();
 
     self::assertStringContainsString('civicrm/warden/return', $uri);
-    self::assertSame(RedirectUri::looksResolvable(), str_starts_with($uri, 'https://') && !str_contains($uri, 'localhost'));
+    self::assertSame(
+      RedirectUri::looksResolvable(),
+      str_starts_with($uri, 'https://') && !str_contains($uri, 'localhost'),
+    );
   }
 
   public function testAHealthyProviderProducesNoProviderMessages(): void {

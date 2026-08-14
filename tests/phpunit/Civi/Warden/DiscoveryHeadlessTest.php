@@ -193,7 +193,14 @@ final class DiscoveryHeadlessTest extends TestCase implements HeadlessInterface,
   public function testOneUnusableKeyDoesNotDisableTheOthers(): void {
     $raw = $this->jwks();
     // A key warden's php-jwt cannot represent, alongside a good one.
-    array_unshift($raw['keys'], ['kty' => 'EC', 'crv' => 'P-521', 'kid' => 'exotic', 'x' => 'AA', 'y' => 'BB', 'use' => 'sig']);
+    array_unshift($raw['keys'], [
+      'kty' => 'EC',
+      'crv' => 'P-521',
+      'kid' => 'exotic',
+      'x' => 'AA',
+      'y' => 'BB',
+      'use' => 'sig',
+    ]);
 
     $keys = JwksKeySource::parse($raw);
 

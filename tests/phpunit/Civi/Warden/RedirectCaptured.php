@@ -7,5 +7,4 @@ namespace Civi\Warden;
 /**
  * Marker thrown from the alterRedirect listener to stop before civiExit().
  */
-final class RedirectCaptured extends \RuntimeException {
-}
+final class RedirectCaptured extends \RuntimeException {}

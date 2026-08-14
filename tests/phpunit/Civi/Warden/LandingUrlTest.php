@@ -14,5 +14,4 @@ use Civi\Warden\Tests\Support\LandingUrlContract;
  *
  * @covers \Civi\Warden\LandingUrl
  */
-final class LandingUrlTest extends LandingUrlContract {
-}
+final class LandingUrlTest extends LandingUrlContract {}

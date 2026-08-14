@@ -14,5 +14,4 @@ use Civi\Warden\Tests\Support\StateStoreContract;
  *
  * @covers \Civi\Warden\StateStore
  */
-final class StateStoreTest extends StateStoreContract {
-}
+final class StateStoreTest extends StateStoreContract {}
