@@ -1,0 +1,15 @@
+<div class="af-markup">
+  <div class="help">
+    {{:: ts('Every sign-in attempt warden handled, and why it ended the way it did. Core CiviCRM keeps no login trail of its own, so this is the only record.') }}
+    {{:: ts('No personal data is stored here beyond the source IP address: the subject is a salted hash and tokens are never written, at any log level. Rows are deleted after the configured retention period.') }}
+  </div>
+</div>
+<div af-fieldset="">
+  <div class="af-container af-layout-inline">
+    <af-field name="event" defn="{required: false}" />
+    <af-field name="provider_name" defn="{required: false}" />
+    <af-field name="user_id" defn="{required: false}" />
+    <af-field name="created_date" defn="{search_range: true}" />
+  </div>
+  <crm-search-display-table search-name="Warden_Audit" display-name="Warden_Audit_Table"></crm-search-display-table>
+</div>

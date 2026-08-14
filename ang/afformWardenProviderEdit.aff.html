@@ -1,0 +1,26 @@
+<af-form ctrl="afform">
+  <af-entity data="{source: 'warden provider'}" type="WardenProvider" name="WardenProvider1" label="Identity provider" actions="{create: true, update: true}" security="RBAC" url-autofill="1" />
+  <div af-fieldset="WardenProvider1" class="af-container">
+    <div class="af-markup">
+      <div class="help">
+        {{:: ts('The issuer is the base URL the provider publishes its configuration under — warden appends /.well-known/openid-configuration and refuses a document that declares a different issuer.') }}
+      </div>
+    </div>
+    <af-field name="label" />
+    <af-field name="name" />
+    <af-field name="issuer" defn="{input_attrs: {placeholder: 'https://id.example.org/realms/main'}}" />
+    <af-field name="client_id" />
+    <af-field name="client_secret" defn="{input_type: 'Text', help_post: 'Leave empty for a public client. Storing a secret requires CIVICRM_CRED_KEYS; warden refuses to save one otherwise rather than writing it unencrypted.'}" />
+    <af-field name="scopes" />
+    <af-field name="allowed_algorithms" defn="{help_post: 'Space-separated. RS256 unless the provider says otherwise. PS256 cannot be verified by the firebase/php-jwt version CiviCRM 6.x ships.'}" />
+    <af-field name="mode" defn="{help_post: 'required denies password sign-in site-wide. Administrators keep password recovery unless you turn that protection off in settings.'}" />
+    <af-field name="provision_policy" />
+    <af-field name="link_policy" defn="{help_post: 'verified_email lets an unknown subject adopt an existing account. Only enable it if you trust the provider not to let users choose their own email claim.'}" />
+    <af-field name="default_role_names" />
+    <af-field name="role_sync_mode" />
+    <af-field name="claim_role_map" defn="{help_post: 'JSON, e.g. {\"claim\": \"realm_access.roles\", \"map\": {\"crm-admin\": [\"admin\"]}}. Values on the right are CiviCRM role names, never permission strings.'}" />
+    <af-field name="weight" />
+    <af-field name="is_active" />
+    <button class="af-button btn btn-primary" crm-icon="fa-check" ng-click="afform.submit()" ng-if="afform.showSubmitButton">{{:: ts('Save') }}</button>
+  </div>
+</af-form>

@@ -1,0 +1,13 @@
+<div class="af-markup">
+  <div class="help">
+    {{:: ts('Each row binds one subject at an identity provider to one CiviCRM user. Deleting a row unlinks the account; the next sign-in is then treated as a first sign-in and follows the provider\'s provisioning and linking policy.') }}
+    {{:: ts('warden refuses to move a link on its own: if a subject arrives for a user that is already bound to a different subject, the sign-in is refused and recorded.') }}
+  </div>
+</div>
+<div af-fieldset="">
+  <div class="af-container af-layout-inline">
+    <af-field name="provider_id" defn="{required: false}" />
+    <af-field name="user_id" defn="{required: false}" />
+  </div>
+  <crm-search-display-table search-name="Warden_Identities" display-name="Warden_Identities_Table"></crm-search-display-table>
+</div>

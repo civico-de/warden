@@ -1,0 +1,14 @@
+<div class="af-markup">
+  <div class="help">
+    {{:: ts('An identity provider is trusted to say who a visitor is. warden discovers its endpoints from the issuer URL and verifies every ID token against the keys it publishes — there are no endpoints to maintain here.') }}
+    {{:: ts('Mode "required" denies password sign-in site-wide. Read the lock-out section of the documentation before switching it on.') }}
+  </div>
+</div>
+<div af-fieldset="">
+  <div class="af-container af-layout-inline">
+    <af-field name="name" defn="{required: false}" />
+    <af-field name="mode" defn="{required: false}" />
+    <af-field name="is_active" defn="{input_type: 'Select', required: false}" />
+  </div>
+  <crm-search-display-table search-name="Warden_Providers" display-name="Warden_Providers_Table"></crm-search-display-table>
+</div>
