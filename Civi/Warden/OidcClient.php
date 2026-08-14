@@ -160,13 +160,15 @@ final class OidcClient {
     if (!is_array($keySet) || !array_is_list($keySet) || $keySet === []) {
       throw new \CRM_Core_Exception('warden: the provider key set contains no signing keys');
     }
+    $normalizedKeySet = [];
     foreach ($keySet as $key) {
       if (!is_array($key)) {
         throw new \CRM_Core_Exception('warden: the provider key set contains an invalid signing key');
       }
+      $normalizedKeySet[] = Value::row($key);
     }
 
-    return ['keys' => $keySet];
+    return ['keys' => $normalizedKeySet];
   }
 
   /**
