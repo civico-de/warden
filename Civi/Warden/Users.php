@@ -18,13 +18,54 @@ use Civi\Api4\User;
  */
 final class Users {
 
+  /**
+   * Does this user hold this permission?
+   *
+   * Asked of Standalone's own Security service, which is the authority and
+   * caches per user. `CRM_Core_Config::singleton()->userSystem` is NOT used:
+   * only the Standalone UF class resolves a permission for an arbitrary user
+   * id, and under `CIVICRM_UF=UnitTests` — the headless suite — it silently
+   * answers for the current user instead. That difference is the whole
+   * administrator escape hatch, so it may not depend on which UF class
+   * happens to be loaded.
+   *
+   * The fallback resolves roles to permissions directly, so the answer stays
+   * correct if the service ever moves.
+   */
   public static function hasPermission(int $userId, string $permission): bool {
+    if (class_exists(\Civi\Standalone\Security::class)) {
+      try {
+        return (bool) \Civi\Standalone\Security::singleton()->checkPermission($permission, $userId);
+      }
+      catch (\Throwable) {
+        // Fall through to the query below.
+      }
+    }
+
     try {
-      return (bool) \CRM_Core_Config::singleton()->userSystem->checkPermission($permission, $userId);
+      $roleIds = self::find($userId)['roles'] ?? [];
+      if (!is_array($roleIds) || $roleIds === []) {
+        return FALSE;
+      }
+
+      $lists = Role::get(FALSE)
+        ->addSelect('permissions')
+        ->addWhere('id', 'IN', array_values($roleIds))
+        ->addWhere('is_active', '=', TRUE)
+        ->execute()
+        ->column('permissions');
+
+      foreach ($lists as $list) {
+        if (is_array($list) && in_array($permission, $list, TRUE)) {
+          return TRUE;
+        }
+      }
     }
     catch (\Throwable) {
       return FALSE;
     }
+
+    return FALSE;
   }
 
   /**

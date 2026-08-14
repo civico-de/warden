@@ -44,6 +44,16 @@ final class StateStore {
    */
   public function create(array $payload, ?int $now = NULL): string {
     $now ??= time();
+
+    // Fail closed with no session. `session_id()` returns '' when none is
+    // started, and an empty id would bind the state to '' — which then
+    // hash_equals('') on the way back and matches ANY caller, quietly turning
+    // the session binding off instead of enforcing it.
+    $session = $this->storage->sessionId();
+    if ($session === '') {
+      throw new \CRM_Core_Exception('warden cannot start a login without a session.');
+    }
+
     $state = Random::urlSafe(32);
 
     $states = $this->prune($this->storage->read(), $now);
@@ -58,7 +68,7 @@ final class StateStore {
     $states[$state] = [
       'created' => $now,
       'expires' => $now + $this->ttl,
-      'session' => $this->storage->sessionId(),
+      'session' => $session,
       'payload' => $payload,
     ];
     $this->storage->write($states);
@@ -76,6 +86,14 @@ final class StateStore {
    */
   public function consume(string $state, ?int $now = NULL): ?array {
     $now ??= time();
+
+    // Same fail-closed rule as create(): without a session there is nothing to
+    // bind to, and comparing '' with '' would accept anybody.
+    $session = $this->storage->sessionId();
+    if ($session === '') {
+      return NULL;
+    }
+
     $states = $this->prune($this->storage->read(), $now);
 
     $entry = $states[$state] ?? NULL;
@@ -89,7 +107,7 @@ final class StateStore {
     }
 
     $boundSession = $entry['session'] ?? NULL;
-    if (!is_string($boundSession) || !hash_equals($boundSession, $this->storage->sessionId())) {
+    if (!is_string($boundSession) || $boundSession === '' || !hash_equals($boundSession, $session)) {
       return NULL;
     }
 

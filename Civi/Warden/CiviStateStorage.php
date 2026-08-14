@@ -13,7 +13,10 @@ namespace Civi\Warden;
  * matches, and `StateStore::consume()` refuses. Consuming first is therefore
  * not a stylistic preference — it is the only order that works.
  */
-final class CiviStateStorage implements StateStorage {
+// Not final so the headless suite can override sessionId(): the CLI SAPI
+// cannot start a PHP session once PHPUnit has written output, and a skipped
+// ordering test would prove nothing.
+class CiviStateStorage implements StateStorage {
 
   private const SCOPE = 'warden';
   private const KEY = 'states';

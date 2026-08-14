@@ -4,7 +4,7 @@ declare(strict_types = 1);
 
 namespace Civi\Warden\Subscriber;
 
-use Civi\Core\Event\GenericHookEvent;
+use Civi\Core\Event\PreEvent;
 use Civi\Core\Service\AutoSubscriber;
 use Civi\Warden\Secret;
 
@@ -35,17 +35,19 @@ final class ProviderSecretSubscriber extends AutoSubscriber {
   /**
    * @throws \CRM_Core_Exception
    */
-  public static function onPre(GenericHookEvent $event): void {
-    if (($event->objectName ?? NULL) !== 'WardenProvider') {
+  public static function onPre(PreEvent $event): void {
+    // PreEvent names these `entity` and `action`, NOT `objectName` and `op`
+    // as the hook signature suggests. Reading the wrong property yields NULL
+    // and the guard below then silently matches nothing at all.
+    if ($event->entity !== 'WardenProvider') {
       return;
     }
-    $op = $event->op ?? NULL;
-    if ($op !== 'create' && $op !== 'edit') {
+    if ($event->action !== 'create' && $event->action !== 'edit') {
       return;
     }
 
     /** @var mixed $params */
-    $params = $event->params ?? NULL;
+    $params = $event->params;
     if (!is_array($params)) {
       return;
     }
@@ -60,7 +62,7 @@ final class ProviderSecretSubscriber extends AutoSubscriber {
       }
     }
 
-    self::refuseActivationWithUnprotectedSecret($event, $op);
+    self::refuseActivationWithUnprotectedSecret($event, $event->action);
   }
 
   /**
@@ -69,7 +71,7 @@ final class ProviderSecretSubscriber extends AutoSubscriber {
    *
    * @throws \CRM_Core_Exception
    */
-  private static function refuseActivationWithUnprotectedSecret(GenericHookEvent $event, string $op): void {
+  private static function refuseActivationWithUnprotectedSecret(PreEvent $event, string $op): void {
     /** @var array<string, mixed> $params */
     $params = $event->params;
     if (($params['is_active'] ?? NULL) != TRUE) {
@@ -82,7 +84,7 @@ final class ProviderSecretSubscriber extends AutoSubscriber {
     // The secret being written now, or the one already stored.
     $secret = $params['client_secret'] ?? NULL;
     if (!is_string($secret) || $secret === '') {
-      $id = $event->id ?? NULL;
+      $id = $event->id;
       if ($op !== 'edit' || !is_numeric($id)) {
         return;
       }

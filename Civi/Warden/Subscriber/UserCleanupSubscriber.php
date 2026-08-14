@@ -5,7 +5,7 @@ declare(strict_types = 1);
 namespace Civi\Warden\Subscriber;
 
 use Civi\Api4\WardenIdentity;
-use Civi\Core\Event\GenericHookEvent;
+use Civi\Core\Event\PostEvent;
 use Civi\Core\Service\AutoSubscriber;
 
 /**
@@ -34,16 +34,16 @@ final class UserCleanupSubscriber extends AutoSubscriber {
     return ['hook_civicrm_post' => ['onPost', 0]];
   }
 
-  public static function onPost(GenericHookEvent $event): void {
-    if (($event->objectName ?? NULL) !== 'User' || ($event->op ?? NULL) !== 'delete') {
+  public static function onPost(PostEvent $event): void {
+    // PostEvent names these `entity` and `action`, NOT `objectName` and `op`.
+    if ($event->entity !== 'User' || $event->action !== 'delete') {
       return;
     }
 
-    $id = $event->id ?? NULL;
-    if (!is_numeric($id)) {
+    if (!is_numeric($event->id)) {
       return;
     }
-    $userId = (int) $id;
+    $userId = (int) $event->id;
 
     try {
       WardenIdentity::delete(FALSE)->addWhere('user_id', '=', $userId)->execute();
