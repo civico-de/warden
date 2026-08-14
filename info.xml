@@ -20,7 +20,12 @@
   <version>0.1.0</version>
   <develStage>alpha</develStage>
   <compatibility mode="semver">
-    <ver>6.12</ver>
+    <!-- 6.14, not lower, and the floor is measured rather than hopeful:
+         `Civi\Authx\Standalone::loginSession()` gained session_regenerate_id()
+         only in 6.13, and warden is verified against 6.14.1 and 6.15.6 (the
+         civico fleet) plus 6.17.2 (the CI image). See "Verified against" in
+         the README for the full symbol matrix. -->
+    <ver>6.14</ver>
   </compatibility>
   <requires>
     <!-- standaloneusers is a HARD dependency and says so: warden establishes

@@ -1,0 +1,245 @@
+<?php
+
+declare(strict_types = 1);
+
+namespace Civi\Warden;
+
+use Civi\Api4\WardenIdentity;
+
+/**
+ * Turning a verified ID token into a CiviCRM user id.
+ *
+ * Keyed on `sub` and nothing else. `sub` is the only claim OIDC promises is
+ * immutable within an issuer and never reassigned to a different person; email
+ * and `preferred_username` are neither, and a provider that lets a user pick
+ * their own email claim turns email-keyed provisioning into an account
+ * takeover primitive.
+ *
+ * The three outcomes, in order:
+ *
+ * 1. The subject is already linked. Log that user in. Nothing else is consulted.
+ * 2. The subject is unknown and `link_policy` allows adoption. Only then may an
+ *    existing account be claimed, and only on a VERIFIED email.
+ * 3. The subject is unknown and `provision_policy` allows it. Create a user.
+ *
+ * Anything else is a refusal with an audit row.
+ */
+final class Provisioner {
+
+  /**
+   * @throws \CRM_Core_Exception
+   *   With a message safe to show a visitor.
+   */
+  public static function resolve(Provider $provider, IdTokenClaims $claims): int {
+    $subject = $claims->subject;
+
+    $existing = self::linkFor($provider, $subject);
+    if ($existing !== NULL) {
+      $userId = (int) $existing['user_id'];
+      self::touch((int) $existing['id']);
+      self::syncRolesOnLogin($provider, $userId, $claims);
+
+      return $userId;
+    }
+
+    [$email, $emailVerified] = $claims->email();
+
+    if ($provider->linkPolicy === Options::LINK_VERIFIED_EMAIL && $email !== NULL) {
+      $userId = self::adopt($provider, $subject, $email, $emailVerified);
+      if ($userId !== NULL) {
+        self::syncRolesOnLogin($provider, $userId, $claims);
+
+        return $userId;
+      }
+    }
+
+    if ($provider->provisionPolicy !== Options::PROVISION_ON) {
+      Audit::record(
+        Options::EVENT_LOGIN_DENIED,
+        $provider,
+        NULL,
+        'unknown_subject',
+        'no linked account and provisioning is off',
+        $subject,
+      );
+
+      throw new \CRM_Core_Exception(
+        'Your identity provider authenticated you, but this site has no account linked to you and does not create accounts automatically. Ask an administrator to link your account.',
+      );
+    }
+
+    return self::create($provider, $claims, $email, $emailVerified);
+  }
+
+  /**
+   * The existing link for this subject, if any.
+   *
+   * @return array<string, mixed>|null
+   */
+  private static function linkFor(Provider $provider, string $subject): ?array {
+    /** @var array<string, mixed>|null $row */
+    $row = WardenIdentity::get(FALSE)
+      ->addSelect('id', 'user_id')
+      ->addWhere('provider_id', '=', $provider->id)
+      ->addWhere('subject', '=', $subject)
+      ->execute()
+      ->first();
+
+    return $row;
+  }
+
+  /**
+   * Adopt an existing account for a previously unseen subject.
+   *
+   * Every guard here is load-bearing, and the refusal to relink is the whole
+   * point: if the account already belongs to a DIFFERENT subject at this
+   * provider, someone is either misconfigured or attacking, and quietly moving
+   * the link would hand them the account.
+   *
+   * @return int|null
+   *   NULL means "not adopted, carry on to provisioning".
+   *
+   * @throws \CRM_Core_Exception
+   *   When the account is bound to another subject — a refusal, not a fallthrough.
+   */
+  private static function adopt(Provider $provider, string $subject, string $email, bool $emailVerified): ?int {
+    if (!$emailVerified) {
+      Audit::record(
+        Options::EVENT_LOGIN_DENIED,
+        $provider,
+        NULL,
+        'email_not_verified',
+        'linking by email requires email_verified',
+        $subject,
+      );
+
+      return NULL;
+    }
+
+    $user = Users::findByEmail($email);
+    if ($user === NULL || !isset($user['id'])) {
+      return NULL;
+    }
+    $userId = (int) $user['id'];
+
+    if (($user['is_active'] ?? TRUE) === FALSE) {
+      Audit::record(Options::EVENT_LOGIN_DENIED, $provider, $userId, 'user_inactive', 'account is disabled', $subject);
+
+      return NULL;
+    }
+
+    // Is this user already bound to a different subject at this provider?
+    $bound = WardenIdentity::get(FALSE)
+      ->addSelect('subject')
+      ->addWhere('provider_id', '=', $provider->id)
+      ->addWhere('user_id', '=', $userId)
+      ->execute()
+      ->first();
+
+    if (is_array($bound)) {
+      Audit::record(
+        Options::EVENT_RELINK_REFUSED,
+        $provider,
+        $userId,
+        'already_linked',
+        'the account is bound to a different subject at this provider',
+        $subject,
+      );
+
+      throw new \CRM_Core_Exception(
+        'This account is already linked to a different identity at your provider. Ask an administrator to unlink it first.',
+      );
+    }
+
+    self::link($provider, $userId, $subject);
+    Audit::record(Options::EVENT_PROVISIONED, $provider, $userId, 'adopted', 'linked to an existing account by verified email', $subject);
+
+    return $userId;
+  }
+
+  /**
+   * @throws \CRM_Core_Exception
+   */
+  private static function create(Provider $provider, IdTokenClaims $claims, ?string $email, bool $emailVerified): int {
+    $subject = $claims->subject;
+
+    // The username has to be stable and unique. `preferred_username` is
+    // neither — two people can hold the same one over time — so it is used
+    // only as a readable prefix, with the subject digest carrying uniqueness.
+    $preferred = $claims->claim('preferred_username');
+    $prefix = is_string($preferred) && $preferred !== ''
+      ? preg_replace('/[^A-Za-z0-9._-]/', '', $preferred) ?? ''
+      : '';
+    $username = substr(($prefix === '' ? $provider->name : $prefix) . '-' . substr(Audit::hashSubject($subject), 0, 12), 0, 60);
+
+    $name = $claims->claim('name');
+    $userId = Users::provision(
+      $username,
+      // Only a verified address is written onto the contact. An unverified one
+      // would let the IdP put an arbitrary address on a CiviCRM contact.
+      $emailVerified ? $email : NULL,
+      is_string($name) ? $name : NULL,
+      RoleMapper::apply($provider, $provider->defaultRoleNames, RoleMapper::rolesFor($provider, $claims->all)),
+    );
+
+    self::link($provider, $userId, $subject);
+    Audit::record(Options::EVENT_PROVISIONED, $provider, $userId, 'created', 'new user provisioned on first login', $subject);
+
+    return $userId;
+  }
+
+  private static function link(Provider $provider, int $userId, string $subject): void {
+    try {
+      WardenIdentity::create(FALSE)
+        ->addValue('provider_id', $provider->id)
+        ->addValue('user_id', $userId)
+        ->addValue('subject', $subject)
+        ->addValue('last_login_date', 'now')
+        ->addValue('login_count', 1)
+        ->execute();
+    }
+    catch (\Throwable $e) {
+      // The unique index is the real enforcement — a race between two
+      // simultaneous first logins lands here, and losing that race must not
+      // create a second link.
+      Audit::record(Options::EVENT_RELINK_REFUSED, $provider, $userId, 'link_conflict', 'unique index refused the link', $subject);
+
+      throw new \CRM_Core_Exception('This identity could not be linked to an account. Ask an administrator to check the warden log.', 0, $e);
+    }
+  }
+
+  private static function touch(int $identityId): void {
+    try {
+      \CRM_Core_DAO::executeQuery(
+        'UPDATE civicrm_warden_identity SET last_login_date = NOW(), login_count = login_count + 1 WHERE id = %1',
+        [1 => [$identityId, 'Integer']],
+      );
+    }
+    catch (\Throwable $e) {
+      \Civi::log()->warning('warden: could not update identity {id}: {msg}', ['id' => $identityId, 'msg' => $e->getMessage()]);
+    }
+  }
+
+  private static function syncRolesOnLogin(Provider $provider, int $userId, IdTokenClaims $claims): void {
+    if ($provider->roleSyncMode !== Options::ROLE_SYNC_EVERY_LOGIN) {
+      return;
+    }
+
+    try {
+      $current = Users::roleNames($userId);
+      $target = RoleMapper::apply($provider, $current, RoleMapper::rolesFor($provider, $claims->all));
+      sort($current);
+      sort($target);
+      if ($current !== $target) {
+        Users::setRoles($userId, $target);
+      }
+    }
+    catch (\Throwable $e) {
+      // A role sync failure must not silently grant the login the roles it
+      // should have lost, so it is loud in the log and in the trail.
+      \Civi::log()->error('warden: role sync failed for user {id}: {msg}', ['id' => $userId, 'msg' => $e->getMessage()]);
+      Audit::record(Options::EVENT_LOGIN_FAILURE, $provider, $userId, 'role_sync_failed', substr($e->getMessage(), 0, 200));
+    }
+  }
+
+}

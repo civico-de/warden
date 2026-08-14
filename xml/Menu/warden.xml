@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<menu>
+  <!-- Both legs of the flow are reachable by an anonymous visitor: that is
+       what a login route is. `*always allow*` is the permission model; the
+       gating lives in the page classes, which check the master switch, the
+       provider's mode and the rate limiter on every request. -->
+  <item>
+    <path>civicrm/warden/login</path>
+    <page_callback>Civi\Warden\Page\LoginPage::handle</page_callback>
+    <title>Sign in</title>
+    <access_arguments>*always allow*</access_arguments>
+    <is_public>true</is_public>
+  </item>
+  <item>
+    <path>civicrm/warden/return</path>
+    <page_callback>Civi\Warden\Page\ReturnPage::handle</page_callback>
+    <title>Sign in</title>
+    <access_arguments>*always allow*</access_arguments>
+    <is_public>true</is_public>
+  </item>
+  <item>
+    <!-- Core's generic settings form picks up every setting whose
+         settings_pages metadata names "warden" (the path basename). -->
+    <path>civicrm/admin/setting/warden</path>
+    <page_callback>CRM_Admin_Form_Generic</page_callback>
+    <title>Warden Settings</title>
+    <access_arguments>administer warden</access_arguments>
+  </item>
+</menu>
