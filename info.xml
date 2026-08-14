@@ -12,9 +12,9 @@
     </author>
   </authors>
   <urls>
-    <url desc="Main Extension Page">https://github.com/jfilter/warden</url>
-    <url desc="Documentation">https://github.com/jfilter/warden</url>
-    <url desc="Support">https://github.com/jfilter/warden/issues</url>
+    <url desc="Main Extension Page">https://github.com/civico-de/warden</url>
+    <url desc="Documentation">https://github.com/civico-de/warden</url>
+    <url desc="Support">https://github.com/civico-de/warden/issues</url>
   </urls>
   <releaseDate>2026-08-14</releaseDate>
   <version>0.2.0</version>
