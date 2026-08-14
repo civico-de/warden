@@ -20,7 +20,13 @@
   </item>
   <item>
     <!-- Core's generic settings form picks up every setting whose
-         settings_pages metadata names "warden" (the path basename). -->
+         settings_pages metadata names "warden" (the path basename).
+
+         This is why warden does NOT carry the `setting-admin` mixin that
+         sunset does: that mixin creates this exact route, and declaring both
+         would mean two civicrm_menu rows for one path. warden needs a menu
+         file regardless, for the two login routes above.
+         RoutesHeadlessTest pins both the route and the settings it finds. -->
     <path>civicrm/admin/setting/warden</path>
     <page_callback>CRM_Admin_Form_Generic</page_callback>
     <title>Warden Settings</title>

@@ -255,19 +255,25 @@ final class LoginFlow {
   }
 
   private function client(Provider $provider, DiscoveryDocument $discovery): GenericProvider {
-    return new GenericProvider([
-      'clientId' => $provider->clientId,
-      'clientSecret' => $provider->clientSecret,
-      'redirectUri' => RedirectUri::get(),
-      'urlAuthorize' => $discovery->authorizationEndpoint,
-      'urlAccessToken' => $discovery->tokenEndpoint,
-      // Never used: warden reads identity from the ID token, which it verifies
-      // itself. A UserInfo round-trip would add a second source of truth and a
-      // second thing to get wrong.
-      'urlResourceOwnerDetails' => '',
-      'pkceMethod' => Pkce::METHOD,
-      'scopeSeparator' => ' ',
-    ]);
+    // The token exchange goes through warden's own HTTP client rather than one
+    // league builds for itself, so timeouts are configured in a single place
+    // and the callback path is testable without a network.
+    return new GenericProvider(
+      [
+        'clientId' => $provider->clientId,
+        'clientSecret' => $provider->clientSecret,
+        'redirectUri' => RedirectUri::get(),
+        'urlAuthorize' => $discovery->authorizationEndpoint,
+        'urlAccessToken' => $discovery->tokenEndpoint,
+        // Never used: warden reads identity from the ID token, which it verifies
+        // itself. A UserInfo round-trip would add a second source of truth and a
+        // second thing to get wrong.
+        'urlResourceOwnerDetails' => '',
+        'pkceMethod' => Pkce::METHOD,
+        'scopeSeparator' => ' ',
+      ],
+      ['httpClient' => Http::client()],
+    );
   }
 
 }

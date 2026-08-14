@@ -26,9 +26,17 @@ return [
         'api_params' => [
           'version' => 4,
           'select' => [
-            'id', 'name', 'label', 'issuer', 'mode:label', 'is_active',
-            'provision_policy:label', 'link_policy:label', 'role_sync_mode:label',
-            'allowed_algorithms', 'weight',
+            'id',
+            'name',
+            'label',
+            'issuer',
+            'mode:label',
+            'is_active',
+            'provision_policy:label',
+            'link_policy:label',
+            'role_sync_mode:label',
+            'allowed_algorithms',
+            'weight',
             'COUNT(identity.id) AS linked_count',
           ],
           'join' => [
@@ -60,7 +68,9 @@ return [
           'pager' => ['expose_limit' => TRUE],
           'sort' => [['weight', 'ASC']],
           'placeholder' => 3,
-          'noResultsText' => E::ts('No identity provider configured. Nobody can sign in with single sign-on until one exists and is enabled.'),
+          'noResultsText' => E::ts(
+            'No identity provider configured. Nobody can sign in with single sign-on until one exists and is enabled.',
+          ),
           'toolbar' => [
             [
               'path' => 'civicrm/admin/warden/provider',
@@ -71,13 +81,23 @@ return [
             ],
           ],
           'columns' => [
-            ['type' => 'field', 'key' => 'label', 'label' => E::ts('Label'), 'sortable' => TRUE,
-              'link' => ['path' => 'civicrm/admin/warden/provider#?WardenProvider1=[id]', 'target' => 'crm-popup']],
+            [
+              'type' => 'field',
+              'key' => 'label',
+              'label' => E::ts('Label'),
+              'sortable' => TRUE,
+              'link' => ['path' => 'civicrm/admin/warden/provider#?WardenProvider1=[id]', 'target' => 'crm-popup'],
+            ],
             ['type' => 'field', 'key' => 'name', 'label' => E::ts('Name'), 'sortable' => TRUE],
             ['type' => 'field', 'key' => 'issuer', 'label' => E::ts('Issuer'), 'sortable' => TRUE],
             ['type' => 'field', 'key' => 'mode:label', 'label' => E::ts('Mode'), 'sortable' => TRUE],
             ['type' => 'field', 'key' => 'allowed_algorithms', 'label' => E::ts('Algorithms'), 'sortable' => FALSE],
-            ['type' => 'field', 'key' => 'provision_policy:label', 'label' => E::ts('Provisioning'), 'sortable' => FALSE],
+            [
+              'type' => 'field',
+              'key' => 'provision_policy:label',
+              'label' => E::ts('Provisioning'),
+              'sortable' => FALSE,
+            ],
             ['type' => 'field', 'key' => 'link_policy:label', 'label' => E::ts('Email linking'), 'sortable' => FALSE],
             ['type' => 'field', 'key' => 'linked_count', 'label' => E::ts('Linked users'), 'sortable' => TRUE],
             ['type' => 'field', 'key' => 'is_active', 'label' => E::ts('Enabled'), 'sortable' => TRUE],
@@ -107,8 +127,14 @@ return [
         'api_params' => [
           'version' => 4,
           'select' => [
-            'id', 'provider_id.label', 'user_id', 'user_id.username',
-            'subject', 'created_date', 'last_login_date', 'login_count',
+            'id',
+            'provider_id.label',
+            'user_id',
+            'user_id.username',
+            'subject',
+            'created_date',
+            'last_login_date',
+            'login_count',
           ],
           'orderBy' => ['last_login_date' => 'DESC'],
           'where' => [],
@@ -163,8 +189,15 @@ return [
         'api_params' => [
           'version' => 4,
           'select' => [
-            'id', 'created_date', 'event:label', 'provider_name',
-            'user_id', 'reason', 'detail', 'source_ip', 'subject_hash',
+            'id',
+            'created_date',
+            'event:label',
+            'provider_name',
+            'user_id',
+            'reason',
+            'detail',
+            'source_ip',
+            'subject_hash',
           ],
           'orderBy' => ['created_date' => 'DESC'],
           'where' => [],

@@ -78,6 +78,7 @@ function warden_civicrm_check(&$messages, $statusNames = [], bool $includeDisabl
  *
  * @param array<string, callable> $checks
  */
+// ckconform-ignore hook-style -- herald's optional custom hook mutates its registry by reference
 function warden_civicrm_heraldChecks(array &$checks): void {
   $checks['warden.config'] = static function (): array {
     $minLevel = CRM_Utils_Check::severityMap('error');

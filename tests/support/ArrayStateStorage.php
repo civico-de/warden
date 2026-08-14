@@ -17,7 +17,9 @@ final class ArrayStateStorage implements StateStorage {
    * @var array<string, array<string, mixed>> */
   public array $states = [];
 
-  public function __construct(public string $sessionId) {}
+  public function __construct(
+    public string $sessionId,
+  ) {}
 
   /**
    * @return array<string, array<string, mixed>>

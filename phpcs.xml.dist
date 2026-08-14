@@ -2,7 +2,14 @@
 <ruleset name="warden">
   <description>Project layer over the bundled CiviKitchen standard.</description>
 
-  <rule ref="CiviKitchen"/>
+  <rule ref="CiviKitchen">
+    <!-- CiviCRM's fluent API uses positional permission/strictness flags
+         across the supported core range; parameter names are not the stable
+         compatibility contract. Keep those explicit booleans positional. -->
+    <exclude name="CiviKitchen.Modern.NameBooleanArguments.UnnamedBoolean"/>
+    <!-- Markdown tables and literal command examples are clearer unwrapped. -->
+    <exclude name="Drupal.Files.TxtFileLineLength.TooLong"/>
+  </rule>
 
   <file>.</file>
   <arg name="extensions" value="php"/>
