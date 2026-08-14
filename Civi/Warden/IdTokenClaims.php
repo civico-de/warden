@@ -5,9 +5,8 @@ declare(strict_types = 1);
 namespace Civi\Warden;
 
 /**
- * A VERIFIED ID token. There is deliberately no way to construct one except
- * out of IdTokenValidator: if you are holding this object, the signature
- * checked out and every claim rule passed.
+ * Claims copied from an ID token after digitalcz/openid-connect has verified
+ * its signature and required OIDC assertions.
  */
 final class IdTokenClaims {
 

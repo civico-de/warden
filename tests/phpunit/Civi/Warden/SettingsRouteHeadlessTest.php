@@ -67,4 +67,19 @@ final class SettingsRouteHeadlessTest extends TestCase implements HeadlessInterf
     self::assertSame('1', (string) $count, 'the nav item would 404 without exactly one route');
   }
 
+  public function testEveryPublicOidcRouteExistsExactlyOnce(): void {
+    foreach ([
+      'civicrm/warden/login',
+      'civicrm/warden/return',
+      'civicrm/warden/logout/backchannel',
+    ] as $path) {
+      $count = \CRM_Core_DAO::singleValueQuery(
+        // ckconform-ignore raw-sql -- civicrm_menu has no APIv4 entity
+        'SELECT COUNT(*) FROM civicrm_menu WHERE path = %1 AND is_public = 1',
+        [1 => [$path, 'String']],
+      );
+      self::assertSame('1', (string) $count, "the public OIDC route {$path} is missing or duplicated");
+    }
+  }
+
 }

@@ -7,6 +7,7 @@ namespace Civi\Api4\Action\Warden;
 use Civi\Api4\Generic\AbstractAction;
 use Civi\Api4\Generic\Result;
 use Civi\Warden\Audit;
+use Civi\Warden\SessionRegistry;
 
 /**
  * Delete audit rows past the retention window.
@@ -23,8 +24,14 @@ class Prune extends AbstractAction {
   protected ?int $days = NULL;
 
   public function _run(Result $result): void {
-    $deleted = Audit::prune($this->days);
-    $result->exchangeArray([['deleted' => $deleted]]);
+    $auditDeleted = Audit::prune($this->days);
+    $sessionsDeleted = SessionRegistry::prune($this->days);
+    $result->exchangeArray([[
+      // Backward-compatible total used by 0.1.x monitoring integrations.
+      'deleted' => $auditDeleted + $sessionsDeleted,
+      'audit_deleted' => $auditDeleted,
+      'sessions_deleted' => $sessionsDeleted,
+    ]]);
   }
 
 }

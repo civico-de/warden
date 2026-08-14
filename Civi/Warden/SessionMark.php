@@ -17,9 +17,7 @@ namespace Civi\Warden;
  * end-session URL for the length of the request, and swap it in when core
  * redirects.
  *
- * This is RP-initiated logout only. Back-channel logout (the provider telling
- * warden a session ended elsewhere) is not implemented; see the single sign-out
- * section of the README.
+ * Back-channel logout is handled separately through SessionRegistry.
  */
 final class SessionMark {
 
@@ -62,26 +60,15 @@ final class SessionMark {
     }
 
     try {
-      $endpoint = Discovery::forProvider($provider)->endSessionEndpoint;
+      $postLogout = rtrim(Value::str(\CRM_Utils_Constant::value('CIVICRM_UF_BASEURL')), '/') . '/civicrm/login';
+      self::$pendingEndSession = OidcClient::forProvider($provider)
+        ->logoutUrl(['post_logout_redirect_uri' => $postLogout]);
     }
     catch (\Throwable) {
       // A provider that cannot be reached at logout time must not stop the
       // local logout. Ending the local session is the part that matters.
       return;
     }
-    if ($endpoint === NULL || !str_starts_with($endpoint, 'https://')) {
-      return;
-    }
-
-    $separator = str_contains($endpoint, '?') ? '&' : '?';
-    $postLogout = rtrim(Value::str(\CRM_Utils_Constant::value('CIVICRM_UF_BASEURL')), '/') . '/civicrm/login';
-    self::$pendingEndSession =
-      $endpoint
-      . $separator
-      . http_build_query([
-        'client_id' => $provider->clientId,
-        'post_logout_redirect_uri' => $postLogout,
-      ]);
 
     Audit::record(Options::EVENT_LOGOUT, $provider);
   }

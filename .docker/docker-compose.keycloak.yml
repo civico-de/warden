@@ -1,0 +1,103 @@
+# Disposable full-stack E2E environment: CiviCRM + Warden + Keycloak.
+# Cloudron is intentionally not part of this test topology.
+#
+# Run through tests/e2e/keycloak/run.sh so provider seeding, Playwright and
+# cleanup all use the same isolated Compose project.
+name: warden-keycloak-e2e
+
+services:
+  certgen:
+    image: alpine:3.22
+    command: ["/bin/sh", "/certgen.sh"]
+    volumes:
+      - keycloak-certs:/certs
+      - ./keycloak/certgen.sh:/certgen.sh:ro
+
+  db:
+    image: mariadb:10.11
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: civicrm
+      MYSQL_USER: civicrm
+      MYSQL_PASSWORD: civicrm
+    volumes:
+      - e2e-db-data:/var/lib/mysql
+      - ./db-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.7.0
+    command: ["start-dev", "--import-realm", "--https-port=8443", "--http-enabled=false"]
+    depends_on:
+      certgen:
+        condition: service_completed_successfully
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin-e2e
+      KC_HOSTNAME: https://keycloak:8443
+      KC_HTTPS_CERTIFICATE_FILE: /certs/keycloak.crt
+      KC_HTTPS_CERTIFICATE_KEY_FILE: /certs/keycloak.key
+    volumes:
+      - keycloak-certs:/certs:ro
+      - ../tests/e2e/keycloak/realm.json:/opt/keycloak/data/import/warden-e2e-realm.json:ro
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8443"]
+      interval: 5s
+      timeout: 3s
+      retries: 40
+      start_period: 20s
+
+  app:
+    image: ${CIVIKITCHEN_IMAGE:-ghcr.io/jfilter/civikitchen:v1}
+    pull_policy: always
+    depends_on:
+      db:
+        condition: service_healthy
+      certgen:
+        condition: service_completed_successfully
+    environment:
+      CIVICRM_AUTO_INSTALL: "1"
+      CIVICRM_DB_HOST: db
+      CIVICRM_DB_NAME: civicrm
+      CIVICRM_DB_USER: civicrm
+      CIVICRM_DB_PASSWORD: civicrm
+      CIVIKITCHEN_SITE_URL: http://app
+      CIVIKITCHEN_ENABLE_EXTENSIONS: warden
+      SSL_CERT_FILE: /e2e-certs/ca.crt
+      CURL_CA_BUNDLE: /e2e-certs/ca.crt
+    volumes:
+      - ..:/var/www/html/ext/warden
+      - ./init.d:/civikitchen-init.d:ro
+      - keycloak-certs:/e2e-certs:ro
+    healthcheck:
+      # API commands may print an unknown-entity error but still exit zero
+      # while first-boot provisioning is running. Fail explicitly until both
+      # Warden's classloader entry and its logout schema are available.
+      test: ["CMD-SHELL", "cv ev 'if (!class_exists(\"Civi\\\\Api4\\\\WardenProvider\") || !CRM_Core_DAO::checkTableExists(\"civicrm_warden_session\")) { throw new RuntimeException(\"warden not ready\"); }' >/dev/null 2>&1 && curl --fail --silent --output /dev/null http://127.0.0.1/civicrm/login"]
+      interval: 5s
+      timeout: 10s
+      retries: 50
+      start_period: 30s
+
+  playwright:
+    image: mcr.microsoft.com/playwright:v1.60.0-noble
+    depends_on:
+      app:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    working_dir: /tmp/warden-keycloak-e2e
+    environment:
+      HOME: /tmp/warden-playwright
+    volumes:
+      - ..:/repo:ro
+    command: ["/bin/bash", "-lc", "cp -R /repo/tests/e2e/keycloak/. . && npm ci --ignore-scripts && npx playwright test warden-keycloak.spec.mjs --reporter=line"]
+    profiles: [test]
+
+volumes:
+  e2e-db-data:
+  keycloak-certs:

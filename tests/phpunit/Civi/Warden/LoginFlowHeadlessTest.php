@@ -12,11 +12,10 @@ use Civi\Test\HeadlessInterface;
 use Civi\Test\TransactionalInterface;
 use Civi\Warden\Tests\Support\ArrayStateStorage;
 use Civi\Warden\Tests\Support\JwtFixture;
-use GuzzleHttp\Client;
-use GuzzleHttp\Handler\MockHandler;
-use GuzzleHttp\HandlerStack;
-use GuzzleHttp\Psr7\Response;
+use DigitalCz\OpenIDConnect\Util\Pkce;
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\HttpClient\MockHttpClient;
+use Symfony\Component\HttpClient\Response\MockResponse;
 
 // The deliberate one-class end-to-end matrix keeps the shared OAuth fixtures
 // and failure assertions together.
@@ -66,29 +65,25 @@ final class LoginFlowHeadlessTest extends TestCase implements HeadlessInterface,
   }
 
   /**
-   * @param list<Response> $queue
+   * @param list<MockResponse> $queue
    */
   private function stubHttp(array $queue): void {
-    Http::setClient(new Client(['handler' => HandlerStack::create(new MockHandler($queue))]));
+    Http::setClient(new MockHttpClient($queue));
   }
 
-  private function discoveryResponse(): Response {
-    return new Response(
-      200,
-      [],
-      (string) json_encode([
-        'issuer' => self::ISSUER,
-        'authorization_endpoint' => self::ISSUER . '/auth',
-        'token_endpoint' => self::ISSUER . '/token',
-        'jwks_uri' => self::ISSUER . '/certs',
-        'id_token_signing_alg_values_supported' => ['RS256'],
-        'code_challenge_methods_supported' => ['S256'],
-      ]),
-    );
+  private function discoveryResponse(): MockResponse {
+    return new MockResponse((string) json_encode([
+      'issuer' => self::ISSUER,
+      'authorization_endpoint' => self::ISSUER . '/auth',
+      'token_endpoint' => self::ISSUER . '/token',
+      'jwks_uri' => self::ISSUER . '/certs',
+      'id_token_signing_alg_values_supported' => ['RS256'],
+      'code_challenge_methods_supported' => ['S256'],
+    ]));
   }
 
-  private function jwksResponse(): Response {
-    $key = openssl_pkey_get_public(JwtFixture::keyPair('a')['public']);
+  private function jwksResponse(string $keyName = 'a', string $kid = JwtFixture::KID): MockResponse {
+    $key = openssl_pkey_get_public(JwtFixture::keyPair($keyName)['public']);
     self::assertNotFalse($key);
     $details = openssl_pkey_get_details($key);
     self::assertIsArray($details);
@@ -96,40 +91,37 @@ final class LoginFlowHeadlessTest extends TestCase implements HeadlessInterface,
     self::assertIsString($details['rsa']['n'] ?? NULL);
     self::assertIsString($details['rsa']['e'] ?? NULL);
 
-    return new Response(
-      200,
-      [],
-      (string) json_encode([
-        'keys' => [
-          [
-            'kty' => 'RSA',
-            'kid' => JwtFixture::KID,
-            'use' => 'sig',
-            'alg' => 'RS256',
-            'n' => rtrim(strtr(base64_encode($details['rsa']['n']), '+/', '-_'), '='),
-            'e' => rtrim(strtr(base64_encode($details['rsa']['e']), '+/', '-_'), '='),
-          ],
+    return new MockResponse((string) json_encode([
+      'keys' => [
+        [
+          'kty' => 'RSA',
+          'kid' => $kid,
+          'use' => 'sig',
+          'alg' => 'RS256',
+          'n' => rtrim(strtr(base64_encode($details['rsa']['n']), '+/', '-_'), '='),
+          'e' => rtrim(strtr(base64_encode($details['rsa']['e']), '+/', '-_'), '='),
         ],
-      ]),
-    );
+      ],
+    ]));
   }
 
   /**
    * @param array<string, mixed> $claimOverrides
    */
-  private function tokenResponse(string $nonce, array $claimOverrides = [], string $keyName = 'a'): Response {
+  private function tokenResponse(
+    string $nonce,
+    array $claimOverrides = [],
+    string $keyName = 'a',
+    string $kid = JwtFixture::KID,
+  ): MockResponse {
     $claims = array_merge(JwtFixture::claims(time(), $nonce), ['aud' => JwtFixture::CLIENT_ID], $claimOverrides);
 
-    return new Response(
-      200,
-      ['Content-Type' => 'application/json'],
-      (string) json_encode([
-        'access_token' => self::TEST_ACCESS_TOKEN,
-        'token_type' => 'Bearer',
-        'expires_in' => 300,
-        'id_token' => JwtFixture::sign($claims, 'RS256', JwtFixture::KID, $keyName),
-      ]),
-    );
+    return new MockResponse((string) json_encode([
+      'access_token' => self::TEST_ACCESS_TOKEN,
+      'token_type' => 'Bearer',
+      'expires_in' => 300,
+      'id_token' => JwtFixture::sign($claims, 'RS256', $kid, $keyName),
+    ]), ['response_headers' => ['Content-Type: application/json']]);
   }
 
   /**
@@ -155,7 +147,7 @@ final class LoginFlowHeadlessTest extends TestCase implements HeadlessInterface,
     self::assertIsInt($row['id'] ?? NULL);
     $provider = ProviderRepository::find($row['id']);
     self::assertNotNull($provider);
-    Cache::forget(Discovery::cacheKey($provider));
+    Cache::forget(OidcClient::discoveryCacheKey($provider));
 
     return $provider;
   }
@@ -210,7 +202,7 @@ final class LoginFlowHeadlessTest extends TestCase implements HeadlessInterface,
     self::assertIsString($verifier);
 
     // Whatever went on the wire must be derivable from what we kept.
-    self::assertNotSame($verifier, Pkce::challenge($verifier), 'S256 must transform the verifier');
+    self::assertNotSame($verifier, Pkce::generateCodeChallenge($verifier), 'S256 must transform the verifier');
   }
 
   public function testTheLandingPathIsSanitisedBeforeItIsStored(): void {
@@ -288,8 +280,13 @@ final class LoginFlowHeadlessTest extends TestCase implements HeadlessInterface,
       // expected
     }
 
+    $allAudit = WardenAudit::get(FALSE)->execute();
     $audit = WardenAudit::get(FALSE)->addWhere('reason', '=', 'bad_signature')->execute();
-    self::assertCount(1, $audit, 'the refusal reason must reach the trail');
+    self::assertCount(
+      1,
+      $audit,
+      'the refusal reason must reach the trail; actual rows: ' . (string) json_encode($allAudit->getArrayCopy()),
+    );
     self::assertCount(0, WardenIdentity::get(FALSE)->execute(), 'no identity may be linked');
   }
 
@@ -330,17 +327,89 @@ final class LoginFlowHeadlessTest extends TestCase implements HeadlessInterface,
     self::assertCount(1, WardenAudit::get(FALSE)->addWhere('reason', '=', 'bad_issuer')->execute());
   }
 
+  public function testATokenForAnotherAudienceIsRefused(): void {
+    [, $state, $nonce] = $this->begin();
+    $this->stubHttp([$this->tokenResponse($nonce, ['aud' => 'another-client']), $this->jwksResponse()]);
+
+    try {
+      $this->flow()->complete($state, 'code');
+      self::fail('a token for another audience must be refused');
+    }
+    // @mago-expect lint:no-empty-catch-clause
+    catch (\CRM_Core_Exception) {
+      // expected
+    }
+
+    self::assertCount(1, WardenAudit::get(FALSE)->addWhere('reason', '=', 'bad_audience')->execute());
+  }
+
+  public function testAnExpiredTokenIsRefused(): void {
+    [, $state, $nonce] = $this->begin();
+    $this->stubHttp([$this->tokenResponse($nonce, ['exp' => time() - 120]), $this->jwksResponse()]);
+
+    try {
+      $this->flow()->complete($state, 'code');
+      self::fail('an expired token must be refused');
+    }
+    // @mago-expect lint:no-empty-catch-clause
+    catch (\CRM_Core_Exception) {
+      // expected
+    }
+
+    self::assertCount(1, WardenAudit::get(FALSE)->addWhere('reason', '=', 'expired')->execute());
+  }
+
+  /**
+   * @dataProvider invalidSubjects
+   */
+  public function testSubjectMustBeANonEmptyString(mixed $subject): void {
+    [, $state, $nonce] = $this->begin();
+    $this->stubHttp([$this->tokenResponse($nonce, ['sub' => $subject]), $this->jwksResponse()]);
+
+    try {
+      $this->flow()->complete($state, 'code');
+      self::fail('an empty or non-string subject must be refused');
+    }
+    // @mago-expect lint:no-empty-catch-clause
+    catch (\CRM_Core_Exception) {
+      // expected
+    }
+
+    self::assertCount(1, WardenAudit::get(FALSE)->addWhere('reason', '=', 'missing_claim')->execute());
+  }
+
+  /**
+   * @return array<string, array{mixed}>
+   */
+  public function invalidSubjects(): array {
+    return ['empty' => [''], 'integer' => [42]];
+  }
+
+  public function testUnknownKidRefreshesJwksOnceDuringKeyRollover(): void {
+    [$provider, $state, $nonce] = $this->begin();
+
+    // Prime the persistent cache with the old signing key.
+    $this->stubHttp([$this->jwksResponse()]);
+    OidcClient::jwksFor($provider);
+
+    // The token uses a newly published kid. The first validation reads the old
+    // cache; Warden refreshes once and the second validation succeeds.
+    $this->stubHttp([
+      $this->tokenResponse($nonce, [], 'b', JwtFixture::OTHER_KID),
+      $this->jwksResponse('b', JwtFixture::OTHER_KID),
+    ]);
+    $result = $this->flow()->complete($state, 'code');
+
+    self::assertGreaterThan(0, $result['userId']);
+  }
+
   public function testATokenResponseWithoutAnIdTokenIsRefused(): void {
     [, $state] = $this->begin();
     $this->stubHttp([
-      new Response(
-        200,
-        ['Content-Type' => 'application/json'],
-        (string) json_encode([
-          'access_token' => self::TEST_ACCESS_TOKEN,
-          'token_type' => 'Bearer',
-        ]),
-      ),
+      new MockResponse((string) json_encode([
+        'access_token' => self::TEST_ACCESS_TOKEN,
+        'token_type' => 'Bearer',
+      ]), ['response_headers' => ['Content-Type: application/json']]),
     ]);
 
     try {
@@ -358,7 +427,10 @@ final class LoginFlowHeadlessTest extends TestCase implements HeadlessInterface,
 
   public function testARefusedCodeExchangeIsAuditedWithoutProviderDetail(): void {
     [, $state] = $this->begin();
-    $this->stubHttp([new Response(400, [], (string) json_encode(['error' => 'invalid_grant']))]);
+    $this->stubHttp([new MockResponse(
+      (string) json_encode(['error' => 'invalid_grant']),
+      ['http_code' => 400, 'response_headers' => ['Content-Type: application/json']],
+    )]);
 
     try {
       $this->flow()->complete($state, 'code');

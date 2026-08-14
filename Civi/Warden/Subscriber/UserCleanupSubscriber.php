@@ -5,7 +5,8 @@ declare(strict_types = 1);
 namespace Civi\Warden\Subscriber;
 
 use Civi\Api4\WardenIdentity;
-use Civi\Core\Event\PostEvent;
+use Civi\Api4\WardenSession;
+use Civi\Core\Event\PreEvent;
 use Civi\Core\Service\AutoSubscriber;
 
 /**
@@ -31,11 +32,13 @@ final class UserCleanupSubscriber extends AutoSubscriber {
    * @return array<string, mixed>
    */
   public static function getSubscribedEvents(): array {
-    return ['hook_civicrm_post' => ['onPost', 0]];
+    return ['hook_civicrm_pre' => ['onPre', 0]];
   }
 
-  public static function onPost(PostEvent $event): void {
-    // PostEvent names these `entity` and `action`, NOT `objectName` and `op`.
+  public static function onPre(PreEvent $event): void {
+    // Run before the user deletion. A cleanup failure must abort the destructive
+    // operation instead of leaving an identity row that can later point at a
+    // recycled numeric user id.
     if ($event->entity !== 'User' || $event->action !== 'delete') {
       return;
     }
@@ -45,24 +48,15 @@ final class UserCleanupSubscriber extends AutoSubscriber {
     }
     $userId = (int) $event->id;
 
-    try {
-      WardenIdentity::delete(FALSE)->addWhere('user_id', '=', $userId)->execute();
-      // WardenAudit::update() would load and rewrite every matching row inside
-      // the delete's own transaction; one statement is both correct and cheap.
-      // ckconform-ignore raw-sql -- bulk NULL-out during a user delete
-      \CRM_Core_DAO::executeQuery(
-        'UPDATE civicrm_warden_audit SET user_id = NULL WHERE user_id = %1',
-        [1 => [$userId, 'Integer']],
-      );
-    }
-    catch (\Throwable $e) {
-      // Loud: an identity row that outlives its user is the exact condition
-      // this listener exists to prevent, so a failure must not be silent.
-      \Civi::log()->error('warden: could not clean up after user {id} was deleted: {msg}', [
-        'id' => $userId,
-        'msg' => $e->getMessage(),
-      ]);
-    }
+    WardenIdentity::delete(FALSE)->addWhere('user_id', '=', $userId)->execute();
+    WardenSession::delete(FALSE)->addWhere('user_id', '=', $userId)->execute();
+    // WardenAudit::update() would load and rewrite every matching row inside
+    // the delete's own transaction; one statement is both correct and cheap.
+    // ckconform-ignore raw-sql -- bulk NULL-out during a user delete
+    \CRM_Core_DAO::executeQuery(
+      'UPDATE civicrm_warden_audit SET user_id = NULL WHERE user_id = %1',
+      [1 => [$userId, 'Integer']],
+    );
   }
 
 }

@@ -9,11 +9,9 @@ use Civi\Test;
 use Civi\Test\HeadlessInterface;
 use Civi\Test\TransactionalInterface;
 use Civi\Warden\Tests\Support\JwtFixture;
-use GuzzleHttp\Client;
-use GuzzleHttp\Handler\MockHandler;
-use GuzzleHttp\HandlerStack;
-use GuzzleHttp\Psr7\Response;
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\HttpClient\MockHttpClient;
+use Symfony\Component\HttpClient\Response\MockResponse;
 
 /**
  * The system checks, and the herald checks that reuse them.
@@ -36,32 +34,31 @@ final class StatusCheckHeadlessTest extends TestCase implements HeadlessInterfac
 
   protected function tearDown(): void {
     Http::setClient(NULL);
+    // Civi settings are cached outside the test transaction. Leaving the
+    // escape hatch disabled makes a second suite run fail depending on order.
+    \Civi::settings()->set('warden_enabled', TRUE);
     parent::tearDown();
   }
 
   /**
-   * @param list<Response> $queue
+   * @param list<MockResponse> $queue
    */
   private function stubHttp(array $queue): void {
-    Http::setClient(new Client(['handler' => HandlerStack::create(new MockHandler($queue))]));
+    Http::setClient(new MockHttpClient($queue));
   }
 
   /**
    * @param array<string, mixed> $overrides
    */
-  private function discoveryResponse(array $overrides = []): Response {
-    return new Response(
-      200,
-      [],
-      (string) json_encode(array_merge([
-        'issuer' => self::ISSUER,
-        'authorization_endpoint' => self::ISSUER . '/auth',
-        'token_endpoint' => self::ISSUER . '/token',
-        'jwks_uri' => self::ISSUER . '/certs',
-        'id_token_signing_alg_values_supported' => ['RS256'],
-        'code_challenge_methods_supported' => ['S256'],
-      ], $overrides)),
-    );
+  private function discoveryResponse(array $overrides = []): MockResponse {
+    return new MockResponse((string) json_encode(array_merge([
+      'issuer' => self::ISSUER,
+      'authorization_endpoint' => self::ISSUER . '/auth',
+      'token_endpoint' => self::ISSUER . '/token',
+      'jwks_uri' => self::ISSUER . '/certs',
+      'id_token_signing_alg_values_supported' => ['RS256'],
+      'code_challenge_methods_supported' => ['S256'],
+    ], $overrides)));
   }
 
   /**
@@ -86,7 +83,7 @@ final class StatusCheckHeadlessTest extends TestCase implements HeadlessInterfac
     self::assertIsInt($row['id'] ?? NULL);
     $provider = ProviderRepository::find($row['id']);
     self::assertNotNull($provider);
-    Cache::forget(Discovery::cacheKey($provider));
+    Cache::forget(OidcClient::discoveryCacheKey($provider));
 
     return $provider;
   }
@@ -105,14 +102,14 @@ final class StatusCheckHeadlessTest extends TestCase implements HeadlessInterfac
 
   public function testAnUnreachableProviderIsReported(): void {
     $provider = $this->provider();
-    $this->stubHttp([new Response(500, [], 'down')]);
+    $this->stubHttp([new MockResponse('down', ['http_code' => 500])]);
 
     self::assertContains('warden_discovery_' . $provider->id, $this->names());
   }
 
   public function testARequiredProviderThatIsDownIsCritical(): void {
     $provider = $this->provider(['mode' => Options::MODE_REQUIRED]);
-    $this->stubHttp([new Response(500, [], 'down')]);
+    $this->stubHttp([new MockResponse('down', ['http_code' => 500])]);
 
     foreach (StatusCheck::messages() as $message) {
       if ($message->getName() !== 'warden_discovery_' . $provider->id) {
@@ -133,13 +130,9 @@ final class StatusCheckHeadlessTest extends TestCase implements HeadlessInterfac
     self::assertContains('warden_alg_mismatch_' . $provider->id, $this->names());
   }
 
-  public function testAnAlgorithmThisRuntimeCannotVerifyIsReported(): void {
-    if (isset(\Firebase\JWT\JWT::$supported_algs['PS256'])) {
-      self::fail('this php-jwt supports PS256; the check needs revisiting');
-    }
-
-    $provider = $this->provider(['allowed_algorithms' => 'PS256']);
-    $this->stubHttp([$this->discoveryResponse(['id_token_signing_alg_values_supported' => ['PS256']])]);
+  public function testASymmetricAlgorithmIsReportedAsUnsupported(): void {
+    $provider = $this->provider(['allowed_algorithms' => 'HS256']);
+    $this->stubHttp([$this->discoveryResponse(['id_token_signing_alg_values_supported' => ['HS256']])]);
 
     self::assertContains('warden_alg_unsupported_' . $provider->id, $this->names());
   }
@@ -192,14 +185,19 @@ final class StatusCheckHeadlessTest extends TestCase implements HeadlessInterfac
     $provider = $this->provider();
     $this->stubHttp([$this->discoveryResponse()]);
 
-    foreach ($this->names() as $name) {
-      self::assertStringNotContainsString('_' . $provider->id, $name, "unexpected message {$name}");
+    foreach (StatusCheck::messages() as $message) {
+      $name = $message->getName();
+      self::assertStringNotContainsString(
+        '_' . $provider->id,
+        $name,
+        'unexpected message ' . $name . ': ' . $message->getMessage(),
+      );
     }
   }
 
   public function testHeraldChecksReportProviderHealth(): void {
     $provider = $this->provider();
-    $this->stubHttp([new Response(500, [], 'down')]);
+    $this->stubHttp([new MockResponse('down', ['http_code' => 500])]);
 
     $checks = [];
     warden_civicrm_heraldChecks($checks);

@@ -81,6 +81,21 @@ final class Cache {
   }
 
   /**
+   * Record a one-time value and report whether it was new. This is used for
+   * logout-token jti replay protection; callers must hash sensitive input into
+   * the key before passing it here.
+   */
+  public static function claim(string $key, int $ttl): bool {
+    $cache = \CRM_Utils_Cache::create(['name' => self::GROUP, 'type' => ['*memory*', 'SqlGroup', 'ArrayCache']]);
+    if ($cache->get($key) !== NULL) {
+      return FALSE;
+    }
+    $cache->set($key, 1, max(60, $ttl));
+
+    return TRUE;
+  }
+
+  /**
    * The configured lifetime, clamped. A five-minute floor keeps a busy site
    * from hammering the provider; a one-hour ceiling bounds how long a revoked
    * key stays trusted.

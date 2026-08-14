@@ -5,9 +5,8 @@ declare(strict_types = 1);
 use CRM_Warden_ExtensionUtil as E;
 
 /**
- * Audit pruning. Enabled by default and daily: the trail records source IP
- * addresses, so a retention job that ships switched off would quietly turn a
- * bounded log into an unbounded one.
+ * Audit and stale-session pruning. Enabled by default and daily: the trail
+ * records source IP addresses, and logout bindings must not grow forever.
  */
 return [
   [
@@ -19,7 +18,7 @@ return [
       'version' => 4,
       'values' => [
         'name' => E::ts('Warden: prune the login trail'),
-        'description' => E::ts('Delete warden audit records older than warden_audit_retention_days.'),
+        'description' => E::ts('Delete old audit records and stale OIDC session bindings.'),
         'run_frequency' => 'Daily',
         'api_entity' => 'Warden',
         'api_action' => 'prune',

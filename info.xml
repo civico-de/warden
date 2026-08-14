@@ -17,15 +17,12 @@
     <url desc="Support">https://github.com/jfilter/warden/issues</url>
   </urls>
   <releaseDate>2026-08-14</releaseDate>
-  <version>0.1.0</version>
+  <version>0.2.0</version>
   <develStage>alpha</develStage>
   <compatibility mode="semver">
-    <!-- 6.14, not lower, and the floor is measured rather than hopeful:
-         `Civi\Authx\Standalone::loginSession()` gained session_regenerate_id()
-         only in 6.13, and warden is verified against 6.14.1 and 6.15.6 (the
-         civico fleet) plus 6.17.2 (the CI image). See "Verified against" in
-         the README for the full symbol matrix. -->
-    <ver>6.14</ver>
+    <!-- Warden deliberately targets the currently verified Standalone line
+         instead of carrying compatibility branches for old core releases. -->
+    <ver>6.17.2</ver>
   </compatibility>
   <requires>
     <!-- standaloneusers is a HARD dependency and says so: warden establishes
@@ -37,7 +34,6 @@
     <ext>org.civicrm.search_kit</ext>
   </requires>
   <php_compatibility mode="list">
-    <ver>8.3</ver>
     <ver>8.4</ver>
   </php_compatibility>
   <smarty_compatibility mode="list">

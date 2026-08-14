@@ -4,10 +4,11 @@ declare(strict_types = 1);
 
 namespace Civi\Warden;
 
+use DigitalCz\OpenIDConnect\Config\IssuerMetadata;
+use DigitalCz\OpenIDConnect\Util\SignatureAlgorithmsFactory;
 use CRM_Warden_ExtensionUtil as E;
 
 // @mago-expect lint:cyclomatic-complexity
-// @mago-expect lint:too-many-methods
 // @mago-expect lint:kan-defect
 // One method per configuration problem, plus a dispatcher. The count IS the
 // feature — each is an independent thing an operator can get wrong.
@@ -29,7 +30,6 @@ final class StatusCheck {
 
     foreach ([
       self::escapeHatchEngaged(...),
-      self::checkPasswordLayerUnavailable(...),
       self::credKeyMissing(...),
       self::redirectUriUnresolvable(...),
       self::secureCookieMismatch(...),
@@ -70,45 +70,6 @@ final class StatusCheck {
         'fa-shield',
       ),
     ];
-  }
-
-  /**
-   * The checkPassword backstop is a 6.15+ feature.
-   *
-   * `civi.standalone.checkPassword` and `civi.standalone.loadUser` were added
-   * to `Civi\Standalone\Security` in 6.15. Below that the event is simply never
-   * dispatched, so warden's listener is inert — no error, no warning, and no
-   * layer 2. Layers 1 (`civi.standalone.login`) and 3 (`civi.api.authorize`)
-   * exist from 6.12 and still enforce `required` mode, so this is a reduction
-   * in defence in depth rather than a hole. It is reported because a silent
-   * reduction is the kind an operator finds out about the hard way.
-   *
-   * @return list<\CRM_Utils_Check_Message>
-   */
-  private static function checkPasswordLayerUnavailable(): array {
-    if (!self::coreOlderThan('6.15')) {
-      return [];
-    }
-    if (!ProviderRepository::requiredModeActive()) {
-      return [];
-    }
-
-    return [
-      new \CRM_Utils_Check_Message(
-        'warden_checkpassword_layer',
-        E::ts(
-          'This CiviCRM is %1, and civi.standalone.checkPassword was only added in 6.15. warden enforces `required` mode through the civi.standalone.login event and the API authorization event, which both work here — but the third, defence-in-depth layer that intercepts the password hash comparison itself is inert on this version. Upgrade to 6.15 or newer to get it.',
-          [1 => htmlspecialchars((string) \CRM_Utils_System::version(), ENT_QUOTES, 'UTF-8')],
-        ),
-        E::ts('warden: one password-denial layer is unavailable on this CiviCRM'),
-        \Psr\Log\LogLevel::NOTICE,
-        'fa-shield',
-      ),
-    ];
-  }
-
-  public static function coreOlderThan(string $version): bool {
-    return version_compare(Value::str(\CRM_Utils_System::version()), $version, '<');
   }
 
   /**
@@ -269,7 +230,7 @@ final class StatusCheck {
     }
 
     try {
-      $discovery = Discovery::forProvider($provider);
+      $discovery = OidcClient::metadataFor($provider);
     }
     catch (\Throwable $e) {
       $messages[] = new \CRM_Utils_Check_Message(
@@ -290,33 +251,28 @@ final class StatusCheck {
   }
 
   /**
-   * The PS256 trap.
-   *
-   * CiviCRM 6.x locks firebase/php-jwt at v7.0.0, whose `$supported_algs` has
-   * no PS256/PS384/PS512 — RSA-PSS landed in 7.1.0. A provider configured to
-   * sign with PS256 therefore produces tokens this site can never verify, and
-   * the failure at login time is a generic decode error. Catch it here, at
-   * configuration time, by comparing the allow-list with what the provider
-   * advertises AND with what the runtime can actually do.
+   * Compare Warden's allow-list with both provider metadata and the asymmetric
+   * algorithms available in the installed OIDC library.
    *
    * @return list<\CRM_Utils_Check_Message>
    */
-  private static function checkAlgorithmOverlap(Provider $provider, DiscoveryDocument $discovery): array {
+  private static function checkAlgorithmOverlap(Provider $provider, IssuerMetadata $discovery): array {
     $messages = [];
+    $supportedAlgorithms = SignatureAlgorithmsFactory::asymmetricAlgorithmNames();
 
     $unsupported = array_values(array_filter(
       $provider->allowedAlgorithms,
-      static fn (string $alg): bool => !isset(\Firebase\JWT\JWT::$supported_algs[$alg]),
+      static fn (string $alg): bool => !in_array($alg, $supportedAlgorithms, TRUE),
     ));
     if ($unsupported !== []) {
       $messages[] = new \CRM_Utils_Check_Message(
         'warden_alg_unsupported_' . $provider->id,
         E::ts(
-          'Provider "%1" allows %2, which the firebase/php-jwt version shipped with this CiviCRM cannot verify. RSA-PSS (PS256/PS384/PS512) needs php-jwt 7.1.0 or newer; CiviCRM 6.x ships 7.0.0. Every login with such a token will fail. Configure the provider to sign with one of: %3.',
+          'Provider "%1" allows %2, which the installed OIDC library cannot verify. Every login with such a token will fail. Configure the provider to sign with one of: %3.',
           [
             1 => $provider->name,
             2 => htmlspecialchars(implode(', ', $unsupported), ENT_QUOTES, 'UTF-8'),
-            3 => implode(', ', array_keys(\Firebase\JWT\JWT::$supported_algs)),
+            3 => implode(', ', $supportedAlgorithms),
           ],
         ),
         E::ts('warden: signing algorithm not supported by this CiviCRM'),
@@ -325,11 +281,12 @@ final class StatusCheck {
       );
     }
 
-    if ($discovery->signingAlgorithms === []) {
+    $signingAlgorithms = $discovery->idTokenSigningAlgValuesSupported();
+    if ($signingAlgorithms === []) {
       return $messages;
     }
 
-    $overlap = array_intersect($provider->allowedAlgorithms, $discovery->signingAlgorithms);
+    $overlap = array_intersect($provider->allowedAlgorithms, $signingAlgorithms);
     if ($overlap === []) {
       $messages[] = new \CRM_Utils_Check_Message(
         'warden_alg_mismatch_' . $provider->id,
@@ -337,7 +294,7 @@ final class StatusCheck {
           'Provider "%1" advertises id_token_signing_alg_values_supported = %2, but warden only allows %3. No token can satisfy both, so every login will be refused with alg_not_allowed.',
           [
             1 => $provider->name,
-            2 => htmlspecialchars(implode(', ', $discovery->signingAlgorithms), ENT_QUOTES, 'UTF-8'),
+            2 => htmlspecialchars(implode(', ', $signingAlgorithms), ENT_QUOTES, 'UTF-8'),
             3 => htmlspecialchars(implode(', ', $provider->allowedAlgorithms), ENT_QUOTES, 'UTF-8'),
           ],
         ),
@@ -347,7 +304,8 @@ final class StatusCheck {
       );
     }
 
-    if (!$discovery->supportsPkceS256) {
+    $methods = $discovery->claims()['code_challenge_methods_supported'] ?? [];
+    if (is_array($methods) && $methods !== [] && !in_array('S256', $methods, TRUE)) {
       $messages[] = new \CRM_Utils_Check_Message(
         'warden_no_pkce_' . $provider->id,
         E::ts(

@@ -97,9 +97,22 @@ return [
     'is_domain' => 1,
     'is_contact' => 0,
   ],
+  'warden_session_retention_days' => [
+    'name' => 'warden_session_retention_days',
+    'settings_pages' => ['warden' => ['weight' => 80]],
+    'type' => 'Integer',
+    'default' => 30,
+    'html_type' => 'text',
+    'title' => E::ts('warden: inactive session-binding retention (days)'),
+    'description' => E::ts(
+      'OIDC session bindings not seen for this many days are purged by warden.prune. Keep this at least as long as the maximum local PHP session lifetime or remote logout can no longer find an unusually old session.',
+    ),
+    'is_domain' => 1,
+    'is_contact' => 0,
+  ],
   'warden_protect_admin_password_login' => [
     'name' => 'warden_protect_admin_password_login',
-    'settings_pages' => ['warden' => ['weight' => 80]],
+    'settings_pages' => ['warden' => ['weight' => 90]],
     'type' => 'Boolean',
     'default' => TRUE,
     'html_type' => 'toggle',

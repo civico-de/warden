@@ -12,3 +12,8 @@ jobs:
     permissions:
       contents: write
     uses: jfilter/civikitchen/.github/workflows/extension-release.yml@v1
+    with:
+      # Warden requires vendor/autoload.php before CiviCRM can enable it. The
+      # shared workflow installs the lockfile, bundles the production vendor/
+      # tree and smoke-installs that exact archive in a fresh site.
+      composer_install: true

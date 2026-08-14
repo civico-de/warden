@@ -33,6 +33,8 @@ final class Options {
   public const EVENT_RELINK_REFUSED = 'relink_refused';
   public const EVENT_RATE_LIMITED = 'rate_limited';
   public const EVENT_LOGOUT = 'logout';
+  public const EVENT_BACKCHANNEL_LOGOUT = 'backchannel_logout';
+  public const EVENT_SESSION_REVOKED = 'session_revoked';
 
   /**
    * @return array<string, string>
@@ -88,6 +90,8 @@ final class Options {
       self::EVENT_RELINK_REFUSED => E::ts('Relink refused'),
       self::EVENT_RATE_LIMITED => E::ts('Rate limited'),
       self::EVENT_LOGOUT => E::ts('Logout'),
+      self::EVENT_BACKCHANNEL_LOGOUT => E::ts('Back-channel logout'),
+      self::EVENT_SESSION_REVOKED => E::ts('Revoked session terminated'),
     ];
   }
 

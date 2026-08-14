@@ -6,6 +6,30 @@ declare(strict_types = 1);
  * Collection of upgrade steps.
  */
 final class CRM_Warden_Upgrader extends \CRM_Extension_Upgrader_Base {
+
+  /**
+   * 0.2.0: persistent OIDC session bindings for front/back-channel logout.
+   *
+   * CiviMix creates schema entities on fresh install only. Existing 0.1.x
+   * installations need the new table explicitly; the helper is idempotent so
+   * a fresh install passing through the step is harmless.
+   */
+  public function upgrade_0200(): bool {
+    if (!\CRM_Core_DAO::checkTableExists('civicrm_warden_session')) {
+      \CRM_Warden_ExtensionUtil::schema()
+        ->createEntityTable('upgrade/schema/0200-WardenSession.entityType.php');
+    }
+    // Logout tokens identify an issuer before their signature/audience can be
+    // validated. One issuer must therefore resolve to exactly one local client.
+    \CRM_Warden_ExtensionUtil::schema()->createIndex(
+      'civicrm_warden_provider',
+      'UI_issuer',
+      ['fields' => ['issuer' => TRUE], 'unique' => TRUE],
+    );
+
+    return TRUE;
+  }
+
   // By convention, functions that look like "function upgrade_NNNN()" are
   // upgrade tasks. They are executed in order (like Drupal's hook_update_N).
   /**

@@ -4,6 +4,19 @@ declare(strict_types = 1);
 
 // phpcs:disable PSR1.Files.SideEffects
 require_once 'warden.civix.php';
+$wardenAutoload = __DIR__ . '/vendor/autoload.php';
+if (!is_file($wardenAutoload)) {
+  throw new RuntimeException('Warden dependencies are missing. Run composer install in the extension directory.');
+}
+$wardenLoader = require_once $wardenAutoload;
+if ($wardenLoader instanceof \Composer\Autoload\ClassLoader) {
+  // Composer prepends loaders by default. That would let transitive extension
+  // packages shadow CiviCRM's own dependency versions (Brick Math exposed
+  // this as a hard fatal). Append Warden's loader so Core remains authoritative
+  // for shared packages while Warden-only namespaces still resolve normally.
+  $wardenLoader->unregister();
+  $wardenLoader->register(FALSE);
+}
 // phpcs:enable
 
 use CRM_Warden_ExtensionUtil as E;
@@ -71,10 +84,8 @@ function warden_civicrm_check(&$messages, $statusNames = [], bool $includeDisabl
  * (herald >= 0.3). Fires only when herald is installed and dispatches the
  * hook, so the dependency stays fully optional.
  *
- * Two checks per provider rather than one aggregate: "the provider is
- * unreachable" and "the key set is stale" fail for different reasons and want
- * different responses, and an aggregate that flips on either tells the
- * on-call person nothing about which.
+ * One named check per provider keeps an IdP outage attributable without
+ * collapsing every configured provider into one aggregate result.
  *
  * @param array<string, callable> $checks
  */
@@ -112,7 +123,7 @@ function warden_civicrm_heraldChecks(array &$checks): void {
   foreach ($providers as $provider) {
     $checks['warden.provider.' . $provider->name] = static function () use ($provider): array {
       try {
-        $discovery = \Civi\Warden\Discovery::forProvider($provider);
+        \Civi\Warden\OidcClient::metadataFor($provider);
       }
       catch (\Throwable $e) {
         // A `required` provider that is down is a site nobody can log into,
@@ -124,20 +135,16 @@ function warden_civicrm_heraldChecks(array &$checks): void {
         return ['status' => 'fail', 'detail' => $lead . $e->getMessage()];
       }
 
-      $keys = new \Civi\Warden\JwksKeySource($provider, $discovery);
       try {
-        $count = count($keys->keys());
+        $keySet = \Civi\Warden\OidcClient::jwksFor($provider);
+        $keys = $keySet['keys'] ?? NULL;
+        if (!is_array($keys)) {
+          throw new \CRM_Core_Exception('warden: the provider key set contains no signing keys');
+        }
+        $count = count($keys);
       }
       catch (\Throwable $e) {
         return ['status' => 'fail', 'detail' => 'key set unusable: ' . $e->getMessage()];
-      }
-
-      $age = $keys->cacheAge();
-      // Stale beyond four lifetimes means refreshes have been failing quietly
-      // while cached keys kept logins working — the window in which a rotated
-      // key becomes an outage nobody saw coming.
-      if ($age !== NULL && $age > (\Civi\Warden\Cache::ttl() * 4)) {
-        return ['status' => 'fail', 'detail' => sprintf('key set has not refreshed for %d seconds', $age)];
       }
 
       return ['status' => 'ok', 'detail' => sprintf('%d signing key(s)', $count)];

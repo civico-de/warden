@@ -6,7 +6,6 @@ namespace Civi\Warden\Tests\Support;
 
 use Civi\Warden\Claims;
 use Civi\Warden\Options;
-use Civi\Warden\Pkce;
 use Civi\Warden\Provider;
 use Civi\Warden\RoleMapper;
 use PHPUnit\Framework\TestCase;
@@ -129,8 +128,8 @@ abstract class RoleMapperContract extends TestCase {
     self::assertSame('openid profile email', $this->provider()->scopes);
   }
 
-  public function testTheIssuerLosesItsTrailingSlash(): void {
-    self::assertSame('https://id.example.org/realms/main', $this->provider()->issuer);
+  public function testTheIssuerPreservesItsTrailingSlashForExactComparison(): void {
+    self::assertSame('https://id.example.org/realms/main/', $this->provider()->issuer);
   }
 
   public function testAlgorithmsAreParsedAndUppercased(): void {
@@ -146,24 +145,6 @@ abstract class RoleMapperContract extends TestCase {
   public function testADisabledProviderIsNotUsable(): void {
     self::assertFalse($this->provider(['mode' => Options::MODE_DISABLED])->usable());
     self::assertFalse($this->provider(['is_active' => FALSE])->usable());
-  }
-
-  // --- PKCE -------------------------------------------------------------
-
-  public function testPkceChallengeMatchesTheRfcExample(): void {
-    // RFC 7636 appendix B.
-    self::assertSame(
-      'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM',
-      Pkce::challenge('dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk'),
-    );
-  }
-
-  public function testPkceVerifiersAreLongEnoughAndUnique(): void {
-    $a = Pkce::verifier();
-    $b = Pkce::verifier();
-
-    self::assertMatchesRegularExpression('/^[A-Za-z0-9_-]{43,128}$/', $a);
-    self::assertNotSame($a, $b);
   }
 
 }

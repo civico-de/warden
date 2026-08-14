@@ -156,6 +156,10 @@ return [
       'fields' => ['name' => TRUE],
       'unique' => TRUE,
     ],
+    'UI_issuer' => [
+      'fields' => ['issuer' => TRUE],
+      'unique' => TRUE,
+    ],
     'index_active_weight' => [
       'fields' => ['is_active' => TRUE, 'weight' => TRUE],
     ],

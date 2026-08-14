@@ -9,20 +9,16 @@ use Civi\Test;
 use Civi\Test\HeadlessInterface;
 use Civi\Test\TransactionalInterface;
 use Civi\Warden\Tests\Support\JwtFixture;
-use GuzzleHttp\Client;
-use GuzzleHttp\Handler\MockHandler;
-use GuzzleHttp\HandlerStack;
-use GuzzleHttp\Psr7\Response;
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\HttpClient\MockHttpClient;
+use Symfony\Component\HttpClient\Response\MockResponse;
 
 /**
- * Discovery, the JWKS key source and the TTL cache — against a stubbed HTTP
- * client, never the network.
+ * Exercises Warden's discovery/cache adapter. Parsing, HTTPS enforcement and
+ * issuer validation themselves are supplied by digitalcz/openid-connect.
  *
  * @group headless
- * @covers \Civi\Warden\Discovery
- * @covers \Civi\Warden\DiscoveryDocument
- * @covers \Civi\Warden\JwksKeySource
+ * @covers \Civi\Warden\OidcClient
  * @covers \Civi\Warden\Cache
  * @covers \Civi\Warden\Http
  */
@@ -39,24 +35,25 @@ final class DiscoveryHeadlessTest extends TestCase implements HeadlessInterface,
 
   protected function tearDown(): void {
     Http::setClient(NULL);
+    SessionMark::clear();
+    SessionMark::consumeEndSession();
     parent::tearDown();
-  }
-
-  /**
-   * @param list<Response|\Throwable> $queue
-   */
-  private function stubHttp(array $queue): MockHandler {
-    $mock = new MockHandler($queue);
-    Http::setClient(new Client(['handler' => HandlerStack::create($mock)]));
-
-    return $mock;
   }
 
   /**
    * @param array<string, mixed> $overrides
    */
-  private function discoveryBody(array $overrides = []): string {
-    return (string) json_encode(array_merge([
+  private function discovery(array $overrides = []): MockResponse {
+    return new MockResponse((string) json_encode($this->discoveryClaims($overrides)));
+  }
+
+  /**
+   * @param array<string, mixed> $overrides
+   *
+   * @return array<string, mixed>
+   */
+  private function discoveryClaims(array $overrides = []): array {
+    return array_merge([
       'issuer' => self::ISSUER,
       'authorization_endpoint' => self::ISSUER . '/protocol/openid-connect/auth',
       'token_endpoint' => self::ISSUER . '/protocol/openid-connect/token',
@@ -64,15 +61,15 @@ final class DiscoveryHeadlessTest extends TestCase implements HeadlessInterface,
       'end_session_endpoint' => self::ISSUER . '/protocol/openid-connect/logout',
       'id_token_signing_alg_values_supported' => ['RS256'],
       'code_challenge_methods_supported' => ['S256'],
-    ], $overrides));
+    ], $overrides);
   }
 
-  private function provider(string $name = 'disco_idp'): Provider {
+  private function provider(string $issuer = self::ISSUER): Provider {
     $row = WardenProvider::create(FALSE)
       ->setValues([
-        'name' => $name,
+        'name' => 'disco_' . substr(hash('sha256', $issuer . microtime()), 0, 8),
         'label' => 'Discovery IdP',
-        'issuer' => self::ISSUER,
+        'issuer' => $issuer,
         'client_id' => JwtFixture::CLIENT_ID,
         'scopes' => 'openid',
         'mode' => Options::MODE_OPTIONAL,
@@ -83,183 +80,145 @@ final class DiscoveryHeadlessTest extends TestCase implements HeadlessInterface,
       ->single();
 
     self::assertIsArray($row);
-    self::assertIsInt($row['id'] ?? NULL);
-    $provider = ProviderRepository::find($row['id']);
+    $provider = ProviderRepository::find(Value::int($row['id'] ?? NULL));
     self::assertNotNull($provider);
-    Cache::forget(Discovery::cacheKey($provider));
+    Cache::forget(OidcClient::discoveryCacheKey($provider));
 
     return $provider;
   }
 
-  public function testDiscoveryReadsTheEndpoints(): void {
+  public function testDiscoveryReadsProviderMetadata(): void {
     $provider = $this->provider();
-    $this->stubHttp([new Response(200, [], $this->discoveryBody())]);
+    Http::setClient(new MockHttpClient([$this->discovery()]));
 
-    $document = Discovery::forProvider($provider);
+    $metadata = OidcClient::metadataFor($provider);
 
-    self::assertSame(self::ISSUER, $document->issuer);
-    self::assertSame(self::ISSUER . '/protocol/openid-connect/certs', $document->jwksUri);
-    self::assertSame(self::ISSUER . '/protocol/openid-connect/logout', $document->endSessionEndpoint);
-    self::assertSame(['RS256'], $document->signingAlgorithms);
-    self::assertTrue($document->supportsPkceS256);
+    self::assertSame(self::ISSUER, $metadata->issuer());
+    self::assertSame(self::ISSUER . '/protocol/openid-connect/certs', $metadata->jwksUri());
+    self::assertSame(['RS256'], $metadata->idTokenSigningAlgValuesSupported());
   }
 
-  /**
-   * The rule that makes discovery trustworthy at all.
-   */
-  public function testADocumentDeclaringADifferentIssuerIsRefused(): void {
+  public function testDifferentIssuerIsRefused(): void {
     $provider = $this->provider();
-    $this->stubHttp([new Response(200, [], $this->discoveryBody(['issuer' => 'https://evil.example.org']))]);
+    Http::setClient(new MockHttpClient([$this->discovery(['issuer' => 'https://evil.example.org'])]));
 
-    $this->expectException(\CRM_Core_Exception::class);
-    $this->expectExceptionMessageMatches('/different issuer/');
-    Discovery::forProvider($provider);
+    $this->expectException(\Throwable::class);
+    $this->expectExceptionMessageMatches('/issuer mismatch/');
+    OidcClient::metadataFor($provider);
   }
 
-  public function testADocumentMissingARequiredEndpointIsRefused(): void {
+  public function testMissingRequiredEndpointIsRefused(): void {
     $provider = $this->provider();
-    $body = json_decode($this->discoveryBody(), TRUE);
-    self::assertIsArray($body);
-    unset($body['jwks_uri']);
-    $this->stubHttp([new Response(200, [], (string) json_encode($body))]);
+    $decoded = $this->discoveryClaims();
+    unset($decoded['jwks_uri']);
+    Http::setClient(new MockHttpClient([new MockResponse((string) json_encode($decoded))]));
 
-    $this->expectException(\CRM_Core_Exception::class);
+    $this->expectException(\Throwable::class);
     $this->expectExceptionMessageMatches('/jwks_uri/');
-    Discovery::forProvider($provider);
+    OidcClient::metadataFor($provider);
   }
 
   public function testPlainHttpIsRefused(): void {
-    $this->expectException(\CRM_Core_Exception::class);
-    $this->expectExceptionMessageMatches('/plain HTTP/');
-    Http::json('http://id.example.org/.well-known/openid-configuration');
+    $provider = $this->provider('http://id.example.org/realms/main');
+    Http::setClient(new MockHttpClient([$this->discovery(['issuer' => 'http://id.example.org/realms/main'])]));
+
+    $this->expectException(\Throwable::class);
+    $this->expectExceptionMessageMatches('/HTTPS/');
+    OidcClient::metadataFor($provider);
   }
 
-  public function testDiscoveryIsCachedSoASecondCallMakesNoRequest(): void {
+  public function testPlainHttpAuthorizationEndpointIsRefused(): void {
     $provider = $this->provider();
-    // One response for two calls: a second request would exhaust the queue and
-    // throw, which is exactly the assertion.
-    $mock = $this->stubHttp([new Response(200, [], $this->discoveryBody())]);
+    Http::setClient(new MockHttpClient([
+      $this->discovery(['authorization_endpoint' => 'http://id.example.org/authorize']),
+    ]));
 
-    Discovery::forProvider($provider);
-    $second = Discovery::forProvider($provider);
-
-    self::assertSame(self::ISSUER, $second->issuer);
-    self::assertCount(0, $mock, 'the queue should be spent exactly once');
+    $this->expectException(\Throwable::class);
+    $this->expectExceptionMessageMatches('/HTTPS/');
+    OidcClient::metadataFor($provider);
   }
 
-  /**
-   * A failure must never be cached for the full lifetime.
-   */
-  public function testAFailureIsCachedBrieflyAndNotForTheFullTtl(): void {
+  public function testDiscoveryRedirectIsNotFollowed(): void {
     $provider = $this->provider();
-    $this->stubHttp([new Response(500, [], 'nope')]);
+    $redirect = new MockResponse('', [
+      'http_code' => 302,
+      'response_headers' => ['Location: http://evil.example.org/discovery'],
+    ]);
+    $http = new MockHttpClient([$redirect]);
+    Http::setClient($http);
 
     try {
-      Discovery::forProvider($provider);
-      self::fail('a 500 should have thrown');
+      OidcClient::metadataFor($provider);
+      self::fail('A discovery redirect must not be accepted.');
     }
-    // Deliberately inspect the cache after the expected refusal.
-    // @mago-expect lint:no-empty-catch-clause
-    catch (\CRM_Core_Exception) {
-      // expected
+    catch (\Throwable) {
+      self::assertSame(1, $http->getRequestsCount());
     }
-
-    self::assertLessThan(
-      Cache::ttl(),
-      Cache::FAILURE_TTL,
-      'a failed fetch must expire sooner than a successful one, or an outage outlives itself',
-    );
-
-    // The failure is remembered rather than re-fetched immediately.
-    $this->expectException(\CRM_Core_Exception::class);
-    Discovery::forProvider($provider);
   }
 
-  // --- JWKS -----------------------------------------------------------------
-
-  public function testTheKeySetIsParsedByKid(): void {
-    $keys = JwksKeySource::parse($this->jwks());
-
-    self::assertArrayHasKey('rsa-1', $keys);
-    self::assertInstanceOf(\Firebase\JWT\Key::class, $keys['rsa-1']);
-  }
-
-  public function testEncryptionKeysAreIgnored(): void {
-    $raw = $this->jwks();
-    self::assertIsArray($raw['keys'][0]);
-    $raw['keys'][0]['use'] = 'enc';
-
-    $this->expectException(\CRM_Core_Exception::class);
-    $this->expectExceptionMessageMatches('/no usable signing key/');
-    JwksKeySource::parse($raw);
-  }
-
-  public function testOneUnusableKeyDoesNotDisableTheOthers(): void {
-    $raw = $this->jwks();
-    self::assertIsArray($raw['keys']);
-    // A key warden's php-jwt cannot represent, alongside a good one.
-    array_unshift($raw['keys'], [
-      'kty' => 'EC',
-      'crv' => 'P-521',
-      'kid' => 'exotic',
-      'x' => 'AA',
-      'y' => 'BB',
-      'use' => 'sig',
-    ]);
-
-    $keys = JwksKeySource::parse($raw);
-
-    self::assertArrayHasKey('rsa-1', $keys);
-    self::assertArrayNotHasKey('exotic', $keys);
-  }
-
-  public function testKeysWithoutAKidAreSkipped(): void {
-    $raw = $this->jwks();
-    self::assertIsArray($raw['keys'][0]);
-    unset($raw['keys'][0]['kid']);
-
-    $this->expectException(\CRM_Core_Exception::class);
-    JwksKeySource::parse($raw);
-  }
-
-  public function testTheKeySourceFetchesFromTheDiscoveredJwksUri(): void {
+  public function testLogoutUrlPreservesAnExistingEndpointQuery(): void {
     $provider = $this->provider();
-    $this->stubHttp([
-      new Response(200, [], $this->discoveryBody()),
-      new Response(200, [], (string) json_encode($this->jwks())),
-    ]);
+    Http::setClient(new MockHttpClient([
+      $this->discovery([
+        'end_session_endpoint' => self::ISSUER . '/protocol/openid-connect/logout?tenant=main',
+      ]),
+    ]));
 
-    $discovery = Discovery::forProvider($provider);
-    $source = new JwksKeySource($provider, $discovery);
-    Cache::forget($source->cacheKey());
+    $url = OidcClient::forProvider($provider)->logoutUrl(['id_token_hint' => 'signed-token']);
+    parse_str((string) parse_url($url, PHP_URL_QUERY), $query);
 
-    self::assertArrayHasKey('rsa-1', $source->keys());
+    self::assertSame('main', $query['tenant'] ?? NULL);
+    self::assertSame('signed-token', $query['id_token_hint'] ?? NULL);
+    self::assertSame(JwtFixture::CLIENT_ID, $query['client_id'] ?? NULL);
   }
 
-  /**
-   * @return array{keys: list<array<string, string>>}
-   */
-  private function jwks(): array {
-    $key = openssl_pkey_get_public(JwtFixture::keyPair('a')['public']);
-    self::assertNotFalse($key);
-    $details = openssl_pkey_get_details($key);
-    self::assertIsArray($details);
-    self::assertIsArray($details['rsa'] ?? NULL);
-    self::assertIsString($details['rsa']['n'] ?? NULL);
-    self::assertIsString($details['rsa']['e'] ?? NULL);
+  public function testSessionMarkCapturesAndConsumesProviderLogoutUrl(): void {
+    $provider = $this->provider();
+    Http::setClient(new MockHttpClient([$this->discovery()]));
 
-    return [
-      'keys' => [
-        [
-          'kty' => 'RSA',
-          'kid' => 'rsa-1',
-          'use' => 'sig',
-          'alg' => 'RS256',
-          'n' => rtrim(strtr(base64_encode($details['rsa']['n']), '+/', '-_'), '='),
-          'e' => rtrim(strtr(base64_encode($details['rsa']['e']), '+/', '-_'), '='),
-        ],
-      ],
-    ];
+    SessionMark::set($provider);
+    self::assertSame($provider->id, SessionMark::providerId());
+    self::assertNull(SessionMark::pendingEndSession());
+
+    SessionMark::captureEndSession();
+    $url = SessionMark::pendingEndSession();
+    self::assertNotNull($url);
+    self::assertStringStartsWith(self::ISSUER . '/protocol/openid-connect/logout?', $url);
+    self::assertSame($url, SessionMark::consumeEndSession());
+    self::assertNull(SessionMark::consumeEndSession());
+
+    SessionMark::clear();
+    self::assertNull(SessionMark::providerId());
+
+    \CRM_Core_Session::singleton()->set('provider_id', 99_999_999, 'warden');
+    SessionMark::captureEndSession();
+    self::assertNull(SessionMark::pendingEndSession());
+  }
+
+  public function testDiscoveryIsCached(): void {
+    $provider = $this->provider();
+    $http = new MockHttpClient([$this->discovery()]);
+    Http::setClient($http);
+
+    OidcClient::metadataFor($provider);
+    OidcClient::metadataFor($provider);
+
+    self::assertSame(1, $http->getRequestsCount());
+    self::assertNotNull(OidcClient::discoveryCacheAge($provider));
+  }
+
+  public function testJwksHealthLoaderReturnsAUsableKeySet(): void {
+    $provider = $this->provider();
+    Http::setClient(new MockHttpClient([
+      $this->discovery(),
+      new MockResponse((string) json_encode([
+        'keys' => [['kid' => 'health-key', 'kty' => 'RSA']],
+      ])),
+    ]));
+
+    $jwks = OidcClient::jwksFor($provider);
+
+    self::assertSame('health-key', $jwks['keys'][0]['kid'] ?? NULL);
   }
 
 }

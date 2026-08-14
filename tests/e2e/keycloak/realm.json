@@ -1,0 +1,44 @@
+{
+  "realm": "warden-e2e",
+  "enabled": true,
+  "sslRequired": "all",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "clients": [
+    {
+      "clientId": "warden-e2e",
+      "name": "Warden E2E",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "warden-e2e-secret",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": ["http://app/civicrm/warden/return"],
+      "webOrigins": ["http://app"],
+      "frontchannelLogout": false,
+      "attributes": {
+        "backchannel.logout.url": "http://app/civicrm/warden/logout/backchannel",
+        "backchannel.logout.session.required": "true",
+        "post.logout.redirect.uris": "http://app/civicrm/login"
+      }
+    }
+  ],
+  "users": [
+    {
+      "username": "warden-user",
+      "email": "warden-user@example.org",
+      "emailVerified": true,
+      "firstName": "Warden",
+      "lastName": "E2E",
+      "enabled": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "warden-password",
+          "temporary": false
+        }
+      ]
+    }
+  ]
+}

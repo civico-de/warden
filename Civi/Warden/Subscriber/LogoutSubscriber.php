@@ -8,6 +8,7 @@ use Civi\Core\Event\GenericHookEvent;
 use Civi\Core\Service\AutoSubscriber;
 use Civi\Warden\Escape;
 use Civi\Warden\SessionMark;
+use Civi\Warden\SessionRegistry;
 use Civi\Warden\Value;
 
 /**
@@ -25,11 +26,10 @@ use Civi\Warden\Value;
  *   the URI by reference, which is where the stashed URL replaces core's
  *   `/civicrm/login?justLoggedOut`.
  *
- * What this does NOT do, and the README says so: back-channel or front-channel
- * logout initiated BY the provider. A session ended at the identity provider
- * stays alive in CiviCRM until it expires. Single sign-out is unsolved
- * upstream, and warden does not pretend otherwise by polling the provider on
- * every page view.
+ * Provider-initiated back-channel logout uses a separate public endpoint. It
+ * persists an exact session revocation, which
+ * SessionRevocationSubscriber enforces before the browser's next CiviCRM
+ * route. See docs/adr/0002-oidc-single-logout.md.
  */
 final class LogoutSubscriber extends AutoSubscriber {
 
@@ -56,6 +56,7 @@ final class LogoutSubscriber extends AutoSubscriber {
 
     try {
       SessionMark::captureEndSession();
+      SessionRegistry::clearCurrent();
     }
     catch (\Throwable $e) {
       \Civi::log()->warning('warden: could not resolve an end-session endpoint: {msg}', ['msg' => $e->getMessage()]);

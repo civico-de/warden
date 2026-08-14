@@ -4,9 +4,6 @@ declare(strict_types = 1);
 
 namespace Civi\Warden\Tests\Support;
 
-use Firebase\JWT\JWT;
-use Firebase\JWT\Key;
-
 /**
  * Crafted ID tokens for the adversarial validator tests.
  *
@@ -52,19 +49,6 @@ final class JwtFixture {
   }
 
   /**
-   * The key set the validator sees: the correct key under KID, a second,
-   * unrelated key under OTHER_KID.
-   *
-   * @return array<string, Key>
-   */
-  public static function keySet(): array {
-    return [
-      self::KID => new Key(self::keyPair('a')['public'], 'RS256'),
-      self::OTHER_KID => new Key(self::keyPair('b')['public'], 'RS256'),
-    ];
-  }
-
-  /**
    * A valid set of claims, which each test then breaks in exactly one way.
    *
    * @return array<string, mixed>
@@ -98,7 +82,19 @@ final class JwtFixture {
     ?string $kid = self::KID,
     string $keyName = 'a',
   ): string {
-    return JWT::encode($claims, self::keyPair($keyName)['private'], $alg, $kid);
+    if ($alg !== 'RS256') {
+      throw new \InvalidArgumentException('The test fixture only signs RS256 tokens.');
+    }
+    $header = ['alg' => $alg, 'typ' => 'JWT'];
+    if ($kid !== NULL) {
+      $header['kid'] = $kid;
+    }
+    $signingInput = self::b64($header) . '.' . self::b64($claims);
+    if (!openssl_sign($signingInput, $signature, self::keyPair($keyName)['private'], OPENSSL_ALGO_SHA256)) {
+      throw new \RuntimeException('could not sign the JWT fixture');
+    }
+
+    return $signingInput . '.' . self::b64String($signature);
   }
 
   /**
@@ -119,19 +115,14 @@ final class JwtFixture {
   }
 
   /**
-   * A token with an algorithm outside the allow-list but otherwise well formed.
-   *
-   * @param array<string, mixed> $claims
-   */
-  public static function hmac(array $claims, string $alg = 'HS256'): string {
-    return JWT::encode($claims, 'shared-secret-shared-secret-1234', $alg, self::KID);
-  }
-
-  /**
    * @param array<string, mixed> $data
    */
   private static function b64(array $data): string {
-    return rtrim(strtr(base64_encode((string) json_encode($data)), '+/', '-_'), '=');
+    return self::b64String((string) json_encode($data));
+  }
+
+  private static function b64String(string $data): string {
+    return rtrim(strtr(base64_encode($data), '+/', '-_'), '=');
   }
 
 }

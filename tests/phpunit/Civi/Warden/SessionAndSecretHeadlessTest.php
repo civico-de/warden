@@ -8,6 +8,7 @@ use Civi\Api4\User;
 use Civi\Api4\WardenAudit;
 use Civi\Api4\WardenIdentity;
 use Civi\Api4\WardenProvider;
+use Civi\Api4\WardenSession;
 use Civi\Test;
 use Civi\Test\HeadlessInterface;
 use Civi\Test\TransactionalInterface;
@@ -32,6 +33,11 @@ final class SessionAndSecretHeadlessTest extends TestCase implements HeadlessInt
       ->install(['org.civicrm.search_kit', 'org.civicrm.afform', 'authx', 'standaloneusers'])
       ->installMe(__DIR__)
       ->apply();
+  }
+
+  protected function tearDown(): void {
+    SessionRegistry::setTestSessionId(NULL);
+    parent::tearDown();
   }
 
   /**
@@ -372,7 +378,15 @@ final class SessionAndSecretHeadlessTest extends TestCase implements HeadlessInt
       ->execute();
     Audit::record(Options::EVENT_LOGIN_SUCCESS, $provider, $userId);
 
+    SessionRegistry::setTestSessionId('cleanup-local-session');
+    SessionRegistry::register(
+      $provider,
+      $userId,
+      new IdTokenClaims('subject-cleanup', ['sub' => 'subject-cleanup', 'sid' => 'cleanup-sid']),
+    );
+
     self::assertCount(1, WardenIdentity::get(FALSE)->addWhere('user_id', '=', $userId)->execute());
+    self::assertCount(1, WardenSession::get(FALSE)->addWhere('user_id', '=', $userId)->execute());
 
     // Deleted through the real API so the listener has to be genuinely
     // registered — calling the static directly would pass even if the
@@ -384,6 +398,7 @@ final class SessionAndSecretHeadlessTest extends TestCase implements HeadlessInt
       WardenIdentity::get(FALSE)->addWhere('user_id', '=', $userId)->execute(),
       'an orphan identity would log its subject in as whoever gets that user id next',
     );
+    self::assertCount(0, WardenSession::get(FALSE)->addWhere('user_id', '=', $userId)->execute());
 
     $audit = WardenAudit::get(FALSE)->addWhere('provider_id', '=', $provider->id)->execute()->first();
     self::assertNotNull($audit, 'the trail must survive the user being deleted');

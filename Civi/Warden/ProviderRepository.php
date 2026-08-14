@@ -56,6 +56,24 @@ final class ProviderRepository {
     return is_array($row) ? Provider::fromArray(Value::row($row)) : NULL;
   }
 
+  public static function findByIssuer(string $issuer): ?Provider {
+    $row = WardenProvider::get(FALSE)
+      ->setSelect(self::FIELDS)
+      ->addWhere('issuer', '=', $issuer)
+      ->execute()
+      ->first();
+
+    if (!is_array($row)) {
+      return NULL;
+    }
+
+    $provider = Provider::fromArray(Value::row($row));
+
+    // Database collations are commonly case-insensitive; OIDC issuer matching
+    // is not. Keep the final comparison in PHP so the trust boundary is exact.
+    return hash_equals($provider->issuer, $issuer) ? $provider : NULL;
+  }
+
   /**
    * Providers a visitor can actually log in with, in button order.
    *

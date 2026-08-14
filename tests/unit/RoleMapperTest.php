@@ -13,7 +13,6 @@ use Civi\Warden\Tests\Support\RoleMapperContract;
  * @covers \Civi\Warden\RoleMapper
  * @covers \Civi\Warden\Claims
  * @covers \Civi\Warden\Provider
- * @covers \Civi\Warden\Pkce
  * @covers \Civi\Warden\Value
  */
 final class RoleMapperTest extends RoleMapperContract {}

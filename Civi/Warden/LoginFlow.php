@@ -4,8 +4,11 @@ declare(strict_types = 1);
 
 namespace Civi\Warden;
 
-use League\OAuth2\Client\Provider\GenericProvider;
+use DigitalCz\OpenIDConnect\Exception\InvalidTokenException as OidcInvalidTokenException;
 
+// @mago-expect lint:cyclomatic-complexity
+// The class keeps the security ordering of one protocol flow visible in one
+// place; splitting it would hide the consume/exchange/login boundaries.
 /**
  * The authorization-code flow, start to finish.
  *
@@ -47,40 +50,29 @@ final class LoginFlow {
    * @throws \CRM_Core_Exception
    */
   public function begin(Provider $provider, ?string $landing): string {
-    $discovery = Discovery::forProvider($provider);
-    $nonce = Random::urlSafe(32);
-    $verifier = Pkce::verifier();
+    $result = OidcClient::forProvider($provider)
+      ->authorizationCode()
+      ->createAuthorizationUrl(['scope' => $provider->scopes]);
+    $nonce = $result->nonce();
+    $verifier = $result->codeVerifier();
+    if ($nonce === NULL || $nonce === '' || $verifier === NULL || $verifier === '') {
+      throw new \CRM_Core_Exception('warden: the OIDC client did not generate nonce and PKCE parameters.');
+    }
 
-    $state = $this->states->create([
+    $this->states->remember($result->state(), [
       'provider_id' => $provider->id,
       'nonce' => $nonce,
       'code_verifier' => $verifier,
       'landing' => LandingUrl::sanitise($landing),
     ]);
 
-    $client = $this->client($provider, $discovery);
-
-    // league/oauth2-client only attaches code_challenge when a PKCE code is
-    // set on the provider BEFORE the URL is built, and only sends
-    // code_verifier at the token endpoint when it is set again on the
-    // instance doing the exchange. The two instances are different requests
-    // here, which is exactly why the verifier is carried in state rather than
-    // left on the object.
-    $client->setPkceCode($verifier);
-
-    return $client->getAuthorizationUrl([
-      'state' => $state,
-      'scope' => $provider->scopes,
-      'nonce' => $nonce,
-      'code_challenge' => Pkce::challenge($verifier),
-      'code_challenge_method' => Pkce::METHOD,
-    ]);
+    return $result->url();
   }
 
   /**
    * Handle the callback: validate, resolve the user, log them in.
    *
-   * @return array{userId: int, landing: string, provider: Provider}
+   * @return array{userId: int, landing: string, provider: Provider, claims: IdTokenClaims}
    *
    * @throws \CRM_Core_Exception
    */
@@ -118,27 +110,15 @@ final class LoginFlow {
     $verifier = Value::str($payload['code_verifier'] ?? NULL);
     $landing = LandingUrl::sanitise(Value::nullableStr($payload['landing'] ?? NULL));
 
-    $discovery = Discovery::forProvider($provider);
-
     // 2. Exchange the code. PKCE binds this exchange to the browser that
     //    started the flow: without the verifier, a stolen code is useless.
-    $idToken = $this->exchange($provider, $discovery, $code, $verifier);
-
-    // 3. Validate the ID token completely before it means anything.
-    $validator = new IdTokenValidator(
-      ValidationPolicy::create(
-        $discovery->issuer,
-        $provider->clientId,
-        $provider->allowedAlgorithms,
-        Value::int(\Civi::settings()->get('warden_clock_leeway'), 60),
-      ),
-      new JwksKeySource($provider, $discovery),
-    );
-
     try {
-      $claims = $validator->validate($idToken, $nonce);
+      $tokens = OidcClient::forProvider($provider)
+        ->authorizationCode()
+        ->fetchTokens($code, $nonce, $verifier);
     }
-    catch (TokenValidationException $e) {
+    catch (OidcInvalidTokenException $e) {
+      $e = TokenValidationException::fromOidc($e);
       Audit::record(Options::EVENT_LOGIN_FAILURE, $provider, NULL, $e->reason, $e->getMessage());
 
       throw new \CRM_Core_Exception(
@@ -148,11 +128,63 @@ final class LoginFlow {
         $e,
       );
     }
+    catch (\Throwable $e) {
+      // The message can carry provider detail; it goes to the log, never to
+      // the browser and never into the audit detail verbatim.
+      \Civi::log()->warning('warden: token exchange failed for provider {p}: {msg}', [
+        'p' => $provider->name,
+        'msg' => $e->getMessage(),
+      ]);
+      Audit::record(
+        Options::EVENT_LOGIN_FAILURE,
+        $provider,
+        NULL,
+        'token_exchange_failed',
+        'the provider refused the authorization code',
+      );
+
+      throw new \CRM_Core_Exception('Your identity provider refused this login. Please try again.', 0, [], $e);
+    }
+
+    $idToken = $tokens->idToken();
+    if ($idToken === NULL) {
+      Audit::record(
+        Options::EVENT_LOGIN_FAILURE,
+        $provider,
+        NULL,
+        'no_id_token',
+        'the token response carried no id_token',
+      );
+
+      throw new \CRM_Core_Exception(
+        'Your identity provider did not return an ID token. Check that the `openid` scope is granted.',
+      );
+    }
+
+    // digitalcz has verified the signature, issuer, audience, azp, times and
+    // nonce before exposing this token to Warden. Its mandatory-claim checker
+    // establishes that sub exists, but does not require a non-empty string.
+    $allClaims = $idToken->claims();
+    $subject = $allClaims['sub'] ?? NULL;
+    if (!is_string($subject) || $subject === '') {
+      $e = new TokenValidationException(
+        TokenValidationException::R_MISSING_CLAIM,
+        'OIDC token subject must be a non-empty string',
+      );
+      Audit::record(Options::EVENT_LOGIN_FAILURE, $provider, NULL, $e->reason, $e->getMessage());
+      throw new \CRM_Core_Exception(
+        'Your identity provider returned a token this site could not accept. The administrator can find the reason in the warden log.',
+        0,
+        [],
+        $e,
+      );
+    }
+    $claims = new IdTokenClaims($subject, $allClaims);
 
     // 4. Resolve to a user. May provision, may refuse.
     $userId = Provisioner::resolve($provider, $claims);
 
-    return ['userId' => $userId, 'landing' => $landing, 'provider' => $provider];
+    return ['userId' => $userId, 'landing' => $landing, 'provider' => $provider, 'claims' => $claims];
   }
 
   /**
@@ -164,7 +196,7 @@ final class LoginFlow {
    *
    * @throws \CRM_Core_Exception
    */
-  public function establishSession(Provider $provider, int $userId): void {
+  public function establishSession(Provider $provider, int $userId, IdTokenClaims $claims): void {
     if (!function_exists('authx_login')) {
       throw new \CRM_Core_Exception('warden needs the authx extension, which is not enabled.');
     }
@@ -204,76 +236,20 @@ final class LoginFlow {
       throw new \CRM_Core_Exception('Could not start a session for this account.', 0, [], $e);
     }
 
-    SessionMark::set($provider);
-    Audit::record(Options::EVENT_LOGIN_SUCCESS, $provider, $userId);
-  }
-
-  /**
-   * @throws \CRM_Core_Exception
-   */
-  private function exchange(Provider $provider, DiscoveryDocument $discovery, string $code, string $verifier): string {
-    $client = $this->client($provider, $discovery);
-    $client->setPkceCode($verifier);
-
     try {
-      $token = $client->getAccessToken('authorization_code', ['code' => $code]);
+      SessionMark::set($provider);
+      SessionRegistry::register($provider, $userId, $claims);
     }
     catch (\Throwable $e) {
-      // The message can carry provider detail; it goes to the log, never to
-      // the browser and never into the audit `detail` verbatim.
-      \Civi::log()->warning('warden: token exchange failed for provider {p}: {msg}', [
-        'p' => $provider->name,
-        'msg' => $e->getMessage(),
-      ]);
-      Audit::record(
-        Options::EVENT_LOGIN_FAILURE,
-        $provider,
-        NULL,
-        'token_exchange_failed',
-        'the provider refused the authorization code',
-      );
-
-      throw new \CRM_Core_Exception('Your identity provider refused this login. Please try again.', 0, [], $e);
+      // A login without its revocation binding would silently promise single
+      // logout and then ignore it. Roll the just-created session back instead.
+      SessionMark::clear();
+      if (function_exists('_authx_uf')) {
+        _authx_uf()->logoutSession();
+      }
+      throw new \CRM_Core_Exception('Could not register the authenticated session.', 0, [], $e);
     }
-
-    $idToken = Value::nullableStr($token->getValues()['id_token'] ?? NULL);
-    if ($idToken === NULL) {
-      Audit::record(
-        Options::EVENT_LOGIN_FAILURE,
-        $provider,
-        NULL,
-        'no_id_token',
-        'the token response carried no id_token',
-      );
-
-      throw new \CRM_Core_Exception(
-        'Your identity provider did not return an ID token. Check that the `openid` scope is granted.',
-      );
-    }
-
-    return $idToken;
-  }
-
-  private function client(Provider $provider, DiscoveryDocument $discovery): GenericProvider {
-    // The token exchange goes through warden's own HTTP client rather than one
-    // league builds for itself, so timeouts are configured in a single place
-    // and the callback path is testable without a network.
-    return new GenericProvider(
-      [
-        'clientId' => $provider->clientId,
-        'clientSecret' => $provider->clientSecret,
-        'redirectUri' => RedirectUri::get(),
-        'urlAuthorize' => $discovery->authorizationEndpoint,
-        'urlAccessToken' => $discovery->tokenEndpoint,
-        // Never used: warden reads identity from the ID token, which it verifies
-        // itself. A UserInfo round-trip would add a second source of truth and a
-        // second thing to get wrong.
-        'urlResourceOwnerDetails' => '',
-        'pkceMethod' => Pkce::METHOD,
-        'scopeSeparator' => ' ',
-      ],
-      ['httpClient' => Http::client()],
-    );
+    Audit::record(Options::EVENT_LOGIN_SUCCESS, $provider, $userId);
   }
 
 }

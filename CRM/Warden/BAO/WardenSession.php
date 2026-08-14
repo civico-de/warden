@@ -1,0 +1,5 @@
+<?php
+
+declare(strict_types = 1);
+
+final class CRM_Warden_BAO_WardenSession extends CRM_Warden_DAO_WardenSession {}

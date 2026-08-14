@@ -19,6 +19,15 @@
     <is_public>true</is_public>
   </item>
   <item>
+    <!-- The IdP calls this without a browser session. Authenticity comes from
+         the signed logout_token, not from a CiviCRM permission. -->
+    <path>civicrm/warden/logout/backchannel</path>
+    <page_callback>Civi\Warden\Page\BackchannelLogoutPage::handle</page_callback>
+    <title>Single logout</title>
+    <access_arguments>*always allow*</access_arguments>
+    <is_public>true</is_public>
+  </item>
+  <item>
     <!-- Core's generic settings form picks up every setting whose
          settings_pages metadata names "warden" (the path basename).
 

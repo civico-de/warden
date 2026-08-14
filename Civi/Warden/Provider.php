@@ -53,12 +53,12 @@ final class Provider {
       Value::int($row['id'] ?? NULL),
       Value::str($row['name'] ?? NULL),
       Value::str($row['label'] ?? NULL),
-      rtrim(Value::str($row['issuer'] ?? NULL), '/'),
+      Value::str($row['issuer'] ?? NULL),
       Value::str($row['client_id'] ?? NULL),
       Secret::reveal(Value::nullableStr($row['client_secret'] ?? NULL)),
       self::normaliseScopes($row['scopes'] ?? NULL),
       Value::str($row['mode'] ?? NULL, Options::MODE_DISABLED),
-      ValidationPolicy::parseAlgorithms(Value::str($row['allowed_algorithms'] ?? NULL, 'RS256')),
+      self::parseAlgorithms(Value::str($row['allowed_algorithms'] ?? NULL, 'RS256')),
       $map['claim'],
       $map['map'],
       Value::str($row['role_sync_mode'] ?? NULL, Options::ROLE_SYNC_PROVISION),
@@ -73,9 +73,8 @@ final class Provider {
    * The issuer as configured, which is also what the ID token's `iss` must be.
    *
    * OIDC Discovery requires the discovered `issuer` to equal this value
-   * exactly, so once Discovery has checked it there is only one issuer string
-   * in play. Trailing slashes are trimmed on both sides because operators
-   * paste them and providers do not send them.
+   * byte-for-byte, so once Discovery has checked it there is only one issuer
+   * string in play. In particular, `/tenant` and `/tenant/` are distinct.
    */
   public function issuerForComparison(): string {
     return $this->issuer;
@@ -133,6 +132,15 @@ final class Provider {
     }
 
     return implode(' ', $scopes);
+  }
+
+  /**
+   * @return list<string>
+   */
+  private static function parseAlgorithms(?string $raw): array {
+    $parts = preg_split('/[\s,]+/', strtoupper(trim((string) $raw))) ?: [];
+
+    return array_values(array_filter($parts, static fn (string $algorithm): bool => $algorithm !== ''));
   }
 
   /**

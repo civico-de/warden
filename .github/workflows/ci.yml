@@ -28,3 +28,22 @@ jobs:
     uses: jfilter/civikitchen/.github/workflows/extension-ci.yml@v1
     with:
       key: warden
+      composer_install: true
+      lifecycle: true
+
+  keycloak-e2e:
+    name: Keycloak browser E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      # The browser stack mounts this checkout and enables Warden during boot,
+      # so runtime and test dependencies must exist before Compose starts.
+      - name: Install Composer dependencies
+        run: composer install --no-interaction --no-progress
+
+      - name: Run real Keycloak login and back-channel logout
+        run: tests/e2e/keycloak/run.sh

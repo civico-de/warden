@@ -8,6 +8,7 @@ use Civi\Api4\Warden;
 use Civi\Api4\WardenAudit;
 use Civi\Api4\WardenIdentity;
 use Civi\Api4\WardenProvider;
+use Civi\Api4\WardenSession;
 use Civi\Test;
 use Civi\Test\HeadlessInterface;
 use PHPUnit\Framework\TestCase;
@@ -52,6 +53,8 @@ final class MetadataHeadlessTest extends TestCase implements HeadlessInterface {
         Options::EVENT_RELINK_REFUSED,
         Options::EVENT_RATE_LIMITED,
         Options::EVENT_LOGOUT,
+        Options::EVENT_BACKCHANNEL_LOGOUT,
+        Options::EVENT_SESSION_REVOKED,
       ],
       array_keys(Options::auditEvents()),
     );
@@ -61,12 +64,17 @@ final class MetadataHeadlessTest extends TestCase implements HeadlessInterface {
     self::assertSame(['administer warden'], Warden::permissions()['default']);
     self::assertSame(['administer warden'], WardenProvider::permissions()['default']);
     self::assertSame(['administer warden'], WardenIdentity::permissions()['default']);
+    self::assertSame(['administer warden'], WardenSession::permissions()['default']);
     self::assertSame(
       [['administer warden', 'view warden log']],
       WardenAudit::permissions()['get'],
     );
 
     self::assertFalse(Warden::prune(FALSE)->getCheckPermissions());
+    $pruned = Warden::prune(FALSE)->setDays(1)->execute()->single();
+    self::assertSame(0, $pruned['deleted'] ?? NULL);
+    self::assertSame(0, $pruned['audit_deleted'] ?? NULL);
+    self::assertSame(0, $pruned['sessions_deleted'] ?? NULL);
     self::assertFalse(Warden::getFields(FALSE)->getCheckPermissions());
   }
 

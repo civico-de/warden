@@ -31,9 +31,10 @@ final class LoginPage {
     $providerId = Value::nullableInt(\CRM_Utils_Request::retrieveValue('provider', 'Positive', NULL, FALSE, 'GET'));
     $provider = $providerId === NULL ? NULL : ProviderRepository::find($providerId);
 
-    if ($provider === NULL) {
-      // No id, or an id that does not exist: fall back to the only provider
-      // when there is exactly one, so `/civicrm/warden/login` is a usable link.
+    if ($providerId === NULL) {
+      // Only an omitted id may fall back to the sole provider. An explicit
+      // unknown id is refused; silently selecting another provider makes a
+      // stale or manipulated login link mean something it did not request.
       $usable = ProviderRepository::usable();
       $provider = count($usable) === 1 ? $usable[0] : NULL;
     }

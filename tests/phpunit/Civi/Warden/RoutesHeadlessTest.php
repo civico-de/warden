@@ -12,11 +12,9 @@ use Civi\Test\TransactionalInterface;
 use Civi\Warden\Page\LoginPage;
 use Civi\Warden\Page\ReturnPage;
 use Civi\Warden\Tests\Support\JwtFixture;
-use GuzzleHttp\Client;
-use GuzzleHttp\Handler\MockHandler;
-use GuzzleHttp\HandlerStack;
-use GuzzleHttp\Psr7\Response;
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\HttpClient\MockHttpClient;
+use Symfony\Component\HttpClient\Response\MockResponse;
 
 /**
  * The two public, unauthenticated routes.
@@ -79,25 +77,21 @@ final class RoutesHeadlessTest extends TestCase implements HeadlessInterface, Tr
   }
 
   /**
-   * @param list<Response> $queue
+   * @param list<MockResponse> $queue
    */
   private function stubHttp(array $queue): void {
-    Http::setClient(new Client(['handler' => HandlerStack::create(new MockHandler($queue))]));
+    Http::setClient(new MockHttpClient($queue));
   }
 
-  private function discoveryResponse(): Response {
-    return new Response(
-      200,
-      [],
-      (string) json_encode([
-        'issuer' => self::ISSUER,
-        'authorization_endpoint' => self::ISSUER . '/auth',
-        'token_endpoint' => self::ISSUER . '/token',
-        'jwks_uri' => self::ISSUER . '/certs',
-        'id_token_signing_alg_values_supported' => ['RS256'],
-        'code_challenge_methods_supported' => ['S256'],
-      ]),
-    );
+  private function discoveryResponse(): MockResponse {
+    return new MockResponse((string) json_encode([
+      'issuer' => self::ISSUER,
+      'authorization_endpoint' => self::ISSUER . '/auth',
+      'token_endpoint' => self::ISSUER . '/token',
+      'jwks_uri' => self::ISSUER . '/certs',
+      'id_token_signing_alg_values_supported' => ['RS256'],
+      'code_challenge_methods_supported' => ['S256'],
+    ]));
   }
 
   /**
@@ -122,7 +116,7 @@ final class RoutesHeadlessTest extends TestCase implements HeadlessInterface, Tr
     self::assertIsInt($row['id'] ?? NULL);
     $provider = ProviderRepository::find($row['id']);
     self::assertNotNull($provider);
-    Cache::forget(Discovery::cacheKey($provider));
+    Cache::forget(OidcClient::discoveryCacheKey($provider));
 
     return $provider;
   }
