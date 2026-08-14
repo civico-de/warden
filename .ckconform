@@ -16,3 +16,7 @@ min_coverage=70
 # Business hooks live in scan classes (AutoSubscriber/HookInterface); the
 # classic function form is reserved for pre-boot/lifecycle/return-value hooks.
 hook_style=listener
+
+# Warden needs Composer dependencies before boot, lifecycle coverage and a
+# dedicated real-browser Keycloak job in addition to the shared CI caller.
+template_custom=.github/workflows/ci.yml -- Warden adds Composer, lifecycle and Keycloak E2E coverage
