@@ -95,7 +95,18 @@ services:
       HOME: /tmp/warden-playwright
     volumes:
       - ..:/repo:ro
-    command: ["/bin/bash", "-lc", "cp -R /repo/tests/e2e/keycloak/. . && npm ci --ignore-scripts && npx playwright test warden-keycloak.spec.mjs --reporter=line"]
+      - ../tests/e2e/keycloak/playwright-report:/tmp/warden-keycloak-e2e/playwright-report
+      - ../tests/e2e/keycloak/test-results:/tmp/warden-keycloak-e2e/test-results
+    command:
+      - /bin/bash
+      - -lc
+      - >-
+        cp /repo/tests/e2e/keycloak/package.json
+        /repo/tests/e2e/keycloak/package-lock.json
+        /repo/tests/e2e/keycloak/playwright.config.mjs
+        /repo/tests/e2e/keycloak/warden-keycloak.spec.mjs .
+        && npm ci --ignore-scripts
+        && npx playwright test warden-keycloak.spec.mjs
     profiles: [test]
 
 volumes:

@@ -10,12 +10,17 @@
         }
     ],
     "require": {
-        "brick/math": "^0.13.1",
+        "ext-filter": "*",
+        "ext-session": "*",
         "php": ">=8.4",
         "digitalcz/openid-connect": "^1.4",
+        "psr/log": "^1 || ^2 || ^3",
+        "symfony/cache-contracts": "^3.6",
+        "symfony/http-client-contracts": "^3.6",
         "symfony/http-client": "^7.3"
     },
     "require-dev": {
+        "ext-openssl": "*",
         "phpunit/phpunit": "^9.6"
     },
     "autoload": {

@@ -106,14 +106,16 @@ final class SingleLogoutHeadlessTest extends TestCase implements HeadlessInterfa
     self::assertIsArray($details);
     self::assertIsArray($details['rsa'] ?? NULL);
 
-    return ['keys' => [[
-      'kty' => 'RSA',
-      'kid' => $kid,
-      'use' => 'sig',
-      'alg' => 'RS256',
-      'n' => rtrim(strtr(base64_encode(Value::str($details['rsa']['n'] ?? NULL)), '+/', '-_'), '='),
-      'e' => rtrim(strtr(base64_encode(Value::str($details['rsa']['e'] ?? NULL)), '+/', '-_'), '='),
-    ]]];
+    return [
+      'keys' => [[
+        'kty' => 'RSA',
+        'kid' => $kid,
+        'use' => 'sig',
+        'alg' => 'RS256',
+        'n' => rtrim(strtr(base64_encode(Value::str($details['rsa']['n'] ?? NULL)), '+/', '-_'), '='),
+        'e' => rtrim(strtr(base64_encode(Value::str($details['rsa']['e'] ?? NULL)), '+/', '-_'), '='),
+      ]],
+    ];
   }
 
   /**

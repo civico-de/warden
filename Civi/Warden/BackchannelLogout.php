@@ -32,7 +32,10 @@ final class BackchannelLogout {
 
     $provider = ProviderRepository::findByIssuer($issuer);
     if ($provider === NULL) {
-      throw new TokenValidationException(TokenValidationException::R_BAD_ISSUER, 'logout token issuer is not configured');
+      throw new TokenValidationException(
+        TokenValidationException::R_BAD_ISSUER,
+        'logout token issuer is not configured',
+      );
     }
 
     try {
@@ -45,7 +48,10 @@ final class BackchannelLogout {
     $all = $token->claims();
     $exp = $all['exp'] ?? NULL;
     if (!is_int($exp)) {
-      throw new TokenValidationException(TokenValidationException::R_MISSING_CLAIM, 'logout token carries no usable exp claim');
+      throw new TokenValidationException(
+        TokenValidationException::R_MISSING_CLAIM,
+        'logout token carries no usable exp claim',
+      );
     }
     $leeway = max(0, min(300, Value::int(\Civi::settings()->get('warden_clock_leeway'), 60)));
     if ((time() - $leeway) >= $exp) {
@@ -55,9 +61,16 @@ final class BackchannelLogout {
     $subject = $all['sub'] ?? NULL;
     $sessionId = $all['sid'] ?? NULL;
     $tokenId = $all['jti'] ?? NULL;
-    if (($subject !== NULL && (!is_string($subject) || $subject === ''))
-      || ($sessionId !== NULL && (!is_string($sessionId) || $sessionId === ''))
-      || !is_string($tokenId) || $tokenId === '') {
+    if (
+      $subject !== NULL
+      && (!is_string($subject)
+      || $subject === '')
+      || $sessionId !== NULL
+      && (!is_string($sessionId)
+      || $sessionId === '')
+      || !is_string($tokenId)
+      || $tokenId === ''
+    ) {
       throw new TokenValidationException(
         TokenValidationException::R_MALFORMED,
         'logout token sub, sid and jti claims must be non-empty strings',
@@ -70,7 +83,10 @@ final class BackchannelLogout {
     // Claim only after the durable revocation succeeded. If the database is
     // temporarily unavailable the IdP can retry the same signed token.
     if (!Cache::claim($replayKey, min(86_400, max(60, $exp - time() + $leeway)))) {
-      throw new TokenValidationException(TokenValidationException::R_LOGOUT_REPLAY, 'logout token was already processed');
+      throw new TokenValidationException(
+        TokenValidationException::R_LOGOUT_REPLAY,
+        'logout token was already processed',
+      );
     }
     Audit::record(
       Options::EVENT_BACKCHANNEL_LOGOUT,

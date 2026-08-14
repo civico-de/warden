@@ -116,12 +116,15 @@ final class LoginFlowHeadlessTest extends TestCase implements HeadlessInterface,
   ): MockResponse {
     $claims = array_merge(JwtFixture::claims(time(), $nonce), ['aud' => JwtFixture::CLIENT_ID], $claimOverrides);
 
-    return new MockResponse((string) json_encode([
-      'access_token' => self::TEST_ACCESS_TOKEN,
-      'token_type' => 'Bearer',
-      'expires_in' => 300,
-      'id_token' => JwtFixture::sign($claims, 'RS256', $kid, $keyName),
-    ]), ['response_headers' => ['Content-Type: application/json']]);
+    return new MockResponse(
+      (string) json_encode([
+        'access_token' => self::TEST_ACCESS_TOKEN,
+        'token_type' => 'Bearer',
+        'expires_in' => 300,
+        'id_token' => JwtFixture::sign($claims, 'RS256', $kid, $keyName),
+      ]),
+      ['response_headers' => ['Content-Type: application/json']],
+    );
   }
 
   /**
@@ -406,10 +409,13 @@ final class LoginFlowHeadlessTest extends TestCase implements HeadlessInterface,
   public function testATokenResponseWithoutAnIdTokenIsRefused(): void {
     [, $state] = $this->begin();
     $this->stubHttp([
-      new MockResponse((string) json_encode([
-        'access_token' => self::TEST_ACCESS_TOKEN,
-        'token_type' => 'Bearer',
-      ]), ['response_headers' => ['Content-Type: application/json']]),
+      new MockResponse(
+        (string) json_encode([
+          'access_token' => self::TEST_ACCESS_TOKEN,
+          'token_type' => 'Bearer',
+        ]),
+        ['response_headers' => ['Content-Type: application/json']],
+      ),
     ]);
 
     try {

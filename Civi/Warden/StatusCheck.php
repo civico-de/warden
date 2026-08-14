@@ -4,9 +4,9 @@ declare(strict_types = 1);
 
 namespace Civi\Warden;
 
+use CRM_Warden_ExtensionUtil as E;
 use DigitalCz\OpenIDConnect\Config\IssuerMetadata;
 use DigitalCz\OpenIDConnect\Util\SignatureAlgorithmsFactory;
-use CRM_Warden_ExtensionUtil as E;
 
 // @mago-expect lint:cyclomatic-complexity
 // @mago-expect lint:kan-defect

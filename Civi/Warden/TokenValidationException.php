@@ -54,7 +54,10 @@ final class TokenValidationException extends \RuntimeException {
       str_contains($message, 'expired'), str_contains($message, 'expiration') => self::R_EXPIRED,
       str_contains($message, 'not before'), str_contains($message, 'issued at') => self::R_NOT_YET_VALID,
       str_contains($message, 'algorithm'), str_contains($message, ' alg') => self::R_ALG_NOT_ALLOWED,
-      str_contains($message, 'signature'), str_contains($message, 'key'), str_contains($message, 'verify') => self::R_BAD_SIGNATURE,
+      str_contains($message, 'signature'),
+      str_contains($message, 'key'),
+      str_contains($message, 'verify'),
+        => self::R_BAD_SIGNATURE,
       default => self::R_MALFORMED,
     };
 
@@ -70,7 +73,8 @@ final class TokenValidationException extends \RuntimeException {
       str_contains($message, 'events') => self::R_LOGOUT_EVENTS_INVALID,
       str_contains($message, 'nonce') => self::R_LOGOUT_NONCE_PROHIBITED,
       str_contains($message, 'either a "sub" or "sid"'),
-      str_contains($message, 'either a "sub" or a "sid"') => self::R_LOGOUT_SUBJECT_MISSING,
+      str_contains($message, 'either a "sub" or a "sid"'),
+        => self::R_LOGOUT_SUBJECT_MISSING,
       default => self::fromOidc($error)->reason,
     };
 
