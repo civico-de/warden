@@ -1,0 +1,35 @@
+# OPT-IN: static analysis of the test suite.
+#
+# The main phpstan.neon.dist analyses production code only. Test code is
+# where the fleet's remaining level-10 debt sits, so making `tests/` part of
+# the default run would have turned green repos red on the day it shipped.
+# The existence of THIS file is the switch: CI runs it as a second, separate
+# phpstan pass when it is here, and does nothing when it is not. There is no
+# other flag to set.
+#
+# Adopt it per repo, once `phpstan analyse -c phpstan-tests.neon.dist` is
+# clean. Measure first — a repo with a three-digit count should fix the test
+# code rather than commit this file with a baseline; a baseline here would
+# recreate exactly the blind spot the file exists to remove.
+#
+# What it buys beyond level 10 on test code: the test-only rules in
+# civikitchen/phpstan-ck-legacy only ever see a file that is analysed, and
+# ck.test.customFieldInTransaction / ck.test.extensionInTransaction /
+# ck.test.ddlInTransaction are inert everywhere until then — DDL inside a
+# TransactionalInterface test is the flake whose own file stays green.
+includes:
+	- phpstan.neon.dist
+
+parameters:
+	# Level 10 here too. Test code that cannot carry the same level is test
+	# code that will not catch the bug it was written for; the honest lever
+	# is not adopting this file yet, not analysing it at a lower level.
+	level: 10
+	# `!` overrides the included list instead of appending to it — this is a
+	# second pass over the tests, not a re-run of the production analysis.
+	paths!:
+		- tests/phpunit
+	# PHPUnit's own classes come from core's dev dependencies. A packaged
+	# install may not have them; point phpstan at wherever they are, e.g.:
+	#	scanDirectories:
+	#		- /var/www/html/core/vendor/phpunit/phpunit/src
