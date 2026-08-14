@@ -22,6 +22,10 @@ use Civi\Api4\WardenAudit;
  */
 final class Audit {
 
+  // @mago-expect lint:excessive-parameter-list
+  // One audit row has these six independent facts and no natural sub-grouping;
+  // bundling them into an array would trade a checked signature for a hash
+  // whose keys are typo-able at every call site.
   public static function record(
     string $event,
     ?Provider $provider = NULL,
@@ -58,7 +62,7 @@ final class Audit {
    * a precomputed table of likely identifiers.
    */
   public static function hashSubject(string $subject): string {
-    $salt = (string) \CRM_Utils_Constant::value('CIVICRM_SITE_KEY');
+    $salt = Value::str(\CRM_Utils_Constant::value('CIVICRM_SITE_KEY'));
 
     return hash('sha256', $salt . "\0" . $subject);
   }

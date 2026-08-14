@@ -22,7 +22,7 @@ class Warden extends AbstractEntity {
   }
 
   public static function getFields(bool $checkPermissions = TRUE): BasicGetFieldsAction {
-    return (new BasicGetFieldsAction(static::getEntityName(), __FUNCTION__, fn (): array => []))
+    return (new BasicGetFieldsAction(static::getEntityName(), __FUNCTION__, static fn (): array => []))
       ->setCheckPermissions($checkPermissions);
   }
 

@@ -36,7 +36,7 @@ final class LoginFlow {
 
   public static function create(): self {
     $ttl = \Civi::settings()->get('warden_state_ttl');
-    $ttl = max(60, min(1800, is_numeric($ttl) ? (int) $ttl : 600));
+    $ttl = max(60, min(1800, Value::int($ttl, 600)));
 
     return new self(new StateStore(new CiviStateStorage(), $ttl));
   }
@@ -89,22 +89,34 @@ final class LoginFlow {
     //    spent. Single use, so a replay of this whole callback finds nothing.
     $payload = $this->states->consume($state);
     if ($payload === NULL) {
-      Audit::record(Options::EVENT_LOGIN_FAILURE, NULL, NULL, 'unknown_state', 'state was unknown, expired or from another session');
+      Audit::record(
+        Options::EVENT_LOGIN_FAILURE,
+        NULL,
+        NULL,
+        'unknown_state',
+        'state was unknown, expired or from another session',
+      );
 
       throw new \CRM_Core_Exception('This login link has expired or was already used. Please start again.');
     }
 
-    $providerId = (int) ($payload['provider_id'] ?? 0);
+    $providerId = Value::int($payload['provider_id'] ?? NULL);
     $provider = ProviderRepository::find($providerId);
     if ($provider === NULL || !$provider->usable()) {
-      Audit::record(Options::EVENT_LOGIN_DENIED, NULL, NULL, 'provider_unavailable', 'provider ' . $providerId . ' is gone or disabled');
+      Audit::record(
+        Options::EVENT_LOGIN_DENIED,
+        NULL,
+        NULL,
+        'provider_unavailable',
+        'provider ' . $providerId . ' is gone or disabled',
+      );
 
       throw new \CRM_Core_Exception('This identity provider is no longer available.');
     }
 
-    $nonce = (string) ($payload['nonce'] ?? '');
-    $verifier = (string) ($payload['code_verifier'] ?? '');
-    $landing = LandingUrl::sanitise(is_string($payload['landing'] ?? NULL) ? $payload['landing'] : NULL);
+    $nonce = Value::str($payload['nonce'] ?? NULL);
+    $verifier = Value::str($payload['code_verifier'] ?? NULL);
+    $landing = LandingUrl::sanitise(Value::nullableStr($payload['landing'] ?? NULL));
 
     $discovery = Discovery::forProvider($provider);
 
@@ -118,7 +130,7 @@ final class LoginFlow {
         $discovery->issuer,
         $provider->clientId,
         $provider->allowedAlgorithms,
-        (int) (\Civi::settings()->get('warden_clock_leeway') ?? 60),
+        Value::int(\Civi::settings()->get('warden_clock_leeway'), 60),
       ),
       new JwksKeySource($provider, $discovery),
     );
@@ -129,7 +141,12 @@ final class LoginFlow {
     catch (TokenValidationException $e) {
       Audit::record(Options::EVENT_LOGIN_FAILURE, $provider, NULL, $e->reason, $e->getMessage());
 
-      throw new \CRM_Core_Exception('Your identity provider returned a token this site could not accept. The administrator can find the reason in the warden log.', 0, $e);
+      throw new \CRM_Core_Exception(
+        'Your identity provider returned a token this site could not accept. The administrator can find the reason in the warden log.',
+        0,
+        [],
+        $e,
+      );
     }
 
     // 4. Resolve to a user. May provision, may refuse.
@@ -170,12 +187,21 @@ final class LoginFlow {
         'flow' => 'login',
         'useSession' => TRUE,
         'principal' => ['userId' => $userId],
+        // authx_login()'s array shape lists `cred` too; it is mutually
+        // exclusive with `principal` and must be absent, not empty.
+        'cred' => NULL,
       ]);
     }
     catch (\Throwable $e) {
-      Audit::record(Options::EVENT_LOGIN_FAILURE, $provider, $userId, 'session_failed', substr($e->getMessage(), 0, 200));
+      Audit::record(
+        Options::EVENT_LOGIN_FAILURE,
+        $provider,
+        $userId,
+        'session_failed',
+        substr($e->getMessage(), 0, 200),
+      );
 
-      throw new \CRM_Core_Exception('Could not start a session for this account.', 0, $e);
+      throw new \CRM_Core_Exception('Could not start a session for this account.', 0, [], $e);
     }
 
     SessionMark::set($provider);
@@ -199,17 +225,30 @@ final class LoginFlow {
         'p' => $provider->name,
         'msg' => $e->getMessage(),
       ]);
-      Audit::record(Options::EVENT_LOGIN_FAILURE, $provider, NULL, 'token_exchange_failed', 'the provider refused the authorization code');
+      Audit::record(
+        Options::EVENT_LOGIN_FAILURE,
+        $provider,
+        NULL,
+        'token_exchange_failed',
+        'the provider refused the authorization code',
+      );
 
-      throw new \CRM_Core_Exception('Your identity provider refused this login. Please try again.', 0, $e);
+      throw new \CRM_Core_Exception('Your identity provider refused this login. Please try again.', 0, [], $e);
     }
 
-    $values = $token->getValues();
-    $idToken = $values['id_token'] ?? NULL;
-    if (!is_string($idToken) || $idToken === '') {
-      Audit::record(Options::EVENT_LOGIN_FAILURE, $provider, NULL, 'no_id_token', 'the token response carried no id_token');
+    $idToken = Value::nullableStr($token->getValues()['id_token'] ?? NULL);
+    if ($idToken === NULL) {
+      Audit::record(
+        Options::EVENT_LOGIN_FAILURE,
+        $provider,
+        NULL,
+        'no_id_token',
+        'the token response carried no id_token',
+      );
 
-      throw new \CRM_Core_Exception('Your identity provider did not return an ID token. Check that the `openid` scope is granted.');
+      throw new \CRM_Core_Exception(
+        'Your identity provider did not return an ID token. Check that the `openid` scope is granted.',
+      );
     }
 
     return $idToken;

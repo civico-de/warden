@@ -42,7 +42,7 @@ final class RoleMapper {
       }
     }
 
-    return array_values(array_keys($granted));
+    return array_keys($granted);
   }
 
   /**
@@ -62,7 +62,7 @@ final class RoleMapper {
       }
     }
 
-    return array_values(array_keys($all));
+    return array_keys($all);
   }
 
   /**
@@ -70,6 +70,8 @@ final class RoleMapper {
    *
    * @param list<string> $current
    *   Role names the user holds now.
+   * @param list<string> $granted
+   *   Role names the token grants.
    *
    * @return list<string>
    */

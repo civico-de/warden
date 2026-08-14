@@ -5,7 +5,6 @@ declare(strict_types = 1);
 namespace Civi\Warden\Tests\Support;
 
 use Civi\Warden\KeySource;
-use Firebase\JWT\Key;
 
 /**
  * A KeySource with no network, which also counts refreshes — so the "refetch
@@ -16,8 +15,8 @@ final class ArrayKeySource implements KeySource {
   public int $refreshCount = 0;
 
   /**
-   * @param array<string, Key> $initial
-   * @param array<string, Key>|null $afterRefresh
+   * @param array<string, \Firebase\JWT\Key> $initial
+   * @param array<string, \Firebase\JWT\Key>|null $afterRefresh
    *   What a refresh discovers. NULL means the refresh changes nothing, which
    *   is the key-rollover-that-did-not-happen case.
    */
@@ -27,8 +26,10 @@ final class ArrayKeySource implements KeySource {
   ) {}
 
   /**
-   * @return array<string, Key>
+   * @return array<string, \Firebase\JWT\Key>
    */
+  // @mago-expect lint:no-boolean-flag-parameter
+  // Implements KeySource; the signature is not ours to change here.
   public function keys(bool $forceRefresh = FALSE): array {
     if ($forceRefresh) {
       $this->refreshCount++;

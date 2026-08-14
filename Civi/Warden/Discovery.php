@@ -38,7 +38,8 @@ final class Discovery {
         $declared = $document['issuer'] ?? NULL;
         if (!is_string($declared) || !hash_equals($issuer, rtrim($declared, '/'))) {
           throw new \CRM_Core_Exception(
-            'warden: the discovery document at ' . Http::redact($url)
+            'warden: the discovery document at '
+            . Http::redact($url)
             . ' declares a different issuer than the one configured. Refusing to use it.',
           );
         }

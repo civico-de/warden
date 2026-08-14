@@ -4,6 +4,9 @@ declare(strict_types = 1);
 
 namespace Civi\Warden;
 
+// @mago-expect lint:cyclomatic-complexity
+// Parsing one untrusted row into a typed object; the branches are the
+// validation.
 /**
  * A configured provider as the flow sees it: typed, with the JSON columns
  * already decoded and the secret already revealed. Built by ProviderRepository;
@@ -17,6 +20,9 @@ final class Provider {
    * @param array<string, list<string>> $roleMap
    *   Claim value => list of CiviCRM role names.
    */
+  // @mago-expect lint:excessive-parameter-list
+  // A readonly value object for one provider row. It is private and has a
+  // single caller (fromArray), which is what keeps the width safe.
   private function __construct(
     public readonly int $id,
     public readonly string $name,
@@ -44,22 +50,22 @@ final class Provider {
     $map = self::decodeRoleMap($row['claim_role_map'] ?? NULL);
 
     return new self(
-      (int) ($row['id'] ?? 0),
-      (string) ($row['name'] ?? ''),
-      (string) ($row['label'] ?? ''),
-      rtrim((string) ($row['issuer'] ?? ''), '/'),
-      (string) ($row['client_id'] ?? ''),
-      Secret::reveal(is_string($row['client_secret'] ?? NULL) ? $row['client_secret'] : NULL),
+      Value::int($row['id'] ?? NULL),
+      Value::str($row['name'] ?? NULL),
+      Value::str($row['label'] ?? NULL),
+      rtrim(Value::str($row['issuer'] ?? NULL), '/'),
+      Value::str($row['client_id'] ?? NULL),
+      Secret::reveal(Value::nullableStr($row['client_secret'] ?? NULL)),
       self::normaliseScopes($row['scopes'] ?? NULL),
-      (string) ($row['mode'] ?? Options::MODE_DISABLED),
-      ValidationPolicy::parseAlgorithms(is_string($row['allowed_algorithms'] ?? NULL) ? $row['allowed_algorithms'] : 'RS256'),
+      Value::str($row['mode'] ?? NULL, Options::MODE_DISABLED),
+      ValidationPolicy::parseAlgorithms(Value::str($row['allowed_algorithms'] ?? NULL, 'RS256')),
       $map['claim'],
       $map['map'],
-      (string) ($row['role_sync_mode'] ?? Options::ROLE_SYNC_PROVISION),
-      (string) ($row['provision_policy'] ?? Options::PROVISION_NEVER),
-      (string) ($row['link_policy'] ?? Options::LINK_NEVER),
+      Value::str($row['role_sync_mode'] ?? NULL, Options::ROLE_SYNC_PROVISION),
+      Value::str($row['provision_policy'] ?? NULL, Options::PROVISION_NEVER),
+      Value::str($row['link_policy'] ?? NULL, Options::LINK_NEVER),
       self::words($row['default_role_names'] ?? NULL),
-      (bool) ($row['is_active'] ?? FALSE),
+      Value::bool($row['is_active'] ?? NULL),
     );
   }
 
@@ -76,11 +82,13 @@ final class Provider {
   }
 
   public function usable(): bool {
-    return $this->isActive
+    return (
+      $this->isActive
       && $this->mode !== Options::MODE_DISABLED
       && $this->issuer !== ''
       && $this->clientId !== ''
-      && $this->allowedAlgorithms !== [];
+      && $this->allowedAlgorithms !== []
+    );
   }
 
   /**
@@ -109,15 +117,9 @@ final class Provider {
       if (!is_string($claimValue) || $claimValue === '') {
         continue;
       }
-      $names = [];
-      /** @var mixed $role */
-      foreach ((array) $roles as $role) {
-        if (is_string($role) && $role !== '') {
-          $names[] = $role;
-        }
-      }
+      $names = Value::strings(is_array($roles) ? $roles : [$roles]);
       if ($names !== []) {
-        $clean[$claimValue] = array_values(array_unique($names));
+        $clean[$claimValue] = $names;
       }
     }
 

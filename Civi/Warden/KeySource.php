@@ -4,8 +4,6 @@ declare(strict_types = 1);
 
 namespace Civi\Warden;
 
-use Firebase\JWT\Key;
-
 /**
  * Where the validator gets verification keys from.
  *
@@ -21,9 +19,12 @@ interface KeySource {
    *   the new key — and an attacker cannot turn unknown `kid` values into an
    *   unbounded stream of outbound fetches.
    *
-   * @return array<string, Key>
+   * @return array<string, \Firebase\JWT\Key>
    *   Keyed by `kid`.
    */
+  // @mago-expect lint:no-boolean-flag-parameter
+  // Two methods would let a caller refresh without meaning to; one flag keeps
+  // the single-retry rule enforceable in the validator.
   public function keys(bool $forceRefresh = FALSE): array;
 
 }

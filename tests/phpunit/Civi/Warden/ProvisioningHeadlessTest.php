@@ -322,12 +322,21 @@ final class ProvisioningHeadlessTest extends TestCase implements HeadlessInterfa
       ->addValue('contact_id', $contact['id'])
       ->addValue('username', $email)
       ->addValue('uf_name', $email)
-      ->addValue('password', 'not-a-real-password-' . bin2hex(random_bytes(8)))
+      ->addValue('password', self::throwawayCredential())
       ->addValue('is_active', TRUE)
       ->execute()
       ->single();
 
     return (int) $user['id'];
+  }
+
+  /**
+   * A random value for the required password column. These users only ever
+   * authenticate through warden, so the value is never used to log in — it
+   * exists because the User entity refuses an empty one.
+   */
+  private static function throwawayCredential(): string {
+    return 'unused-' . bin2hex(random_bytes(12));
   }
 
 }

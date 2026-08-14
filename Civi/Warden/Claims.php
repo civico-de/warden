@@ -20,17 +20,31 @@ final class Claims {
       return NULL;
     }
 
-    /** @var mixed $cursor */
-    $cursor = $claims;
-    foreach (explode('.', $path) as $segment) {
+    return self::descend($claims, explode('.', $path));
+  }
+
+  /**
+   * @param array<string, mixed> $claims
+   * @param list<string> $segments
+   */
+  private static function descend(array $claims, array $segments): mixed {
+    $cursor = self::wrap($claims);
+    foreach ($segments as $segment) {
       if (!is_array($cursor) || !array_key_exists($segment, $cursor)) {
         return NULL;
       }
-      /** @var mixed $cursor */
-      $cursor = $cursor[$segment];
+      $cursor = self::wrap($cursor[$segment]);
     }
 
     return $cursor;
+  }
+
+  /**
+   * Identity, typed as mixed. The descent variable has to start out mixed or
+   * its first assignment pins it to array and every later one is a type error.
+   */
+  private static function wrap(mixed $value): mixed {
+    return $value;
   }
 
   /**
@@ -61,9 +75,10 @@ final class Claims {
     $out = [];
     /** @var mixed $item */
     foreach ($value as $item) {
-      if (is_string($item) && $item !== '') {
-        $out[] = $item;
+      if (!is_string($item) || $item === '') {
+        continue;
       }
+      $out[] = $item;
     }
 
     return array_values(array_unique($out));

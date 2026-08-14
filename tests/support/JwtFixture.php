@@ -23,7 +23,8 @@ final class JwtFixture {
   public const KID = 'key-1';
   public const OTHER_KID = 'key-2';
 
-  /** @var array<string, array{private: string, public: string}>|null */
+  /**
+   * @var array<string, array{private: string, public: string}>|null */
   private static ?array $keys = NULL;
 
   /**
@@ -91,7 +92,12 @@ final class JwtFixture {
    * @param string $keyName
    *   Which generated key pair signs it — 'a' is the one KID publishes.
    */
-  public static function sign(array $claims, string $alg = 'RS256', ?string $kid = self::KID, string $keyName = 'a'): string {
+  public static function sign(
+    array $claims,
+    string $alg = 'RS256',
+    ?string $kid = self::KID,
+    string $keyName = 'a',
+  ): string {
     return JWT::encode($claims, self::keyPair($keyName)['private'], $alg, $kid);
   }
 

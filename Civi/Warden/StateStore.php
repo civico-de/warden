@@ -4,6 +4,8 @@ declare(strict_types = 1);
 
 namespace Civi\Warden;
 
+// @mago-expect lint:cyclomatic-complexity
+// Expiry, single use and session binding are three rules on one small object.
 /**
  * warden's own store for in-flight authorization requests.
  *
@@ -61,7 +63,10 @@ final class StateStore {
     // Bound so a page that fires many login redirects cannot grow the session
     // without limit. Oldest first out.
     if (count($states) >= self::MAX_ENTRIES) {
-      uasort($states, static fn (array $a, array $b): int => (int) ($a['created'] ?? 0) <=> (int) ($b['created'] ?? 0));
+      uasort(
+        $states,
+        static fn (array $a, array $b): int => Value::int($a['created'] ?? NULL) <=> Value::int($b['created'] ?? NULL),
+      );
       $states = array_slice($states, -(self::MAX_ENTRIES - 1), NULL, TRUE);
     }
 

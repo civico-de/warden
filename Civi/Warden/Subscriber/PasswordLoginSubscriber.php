@@ -7,11 +7,16 @@ namespace Civi\Warden\Subscriber;
 use Civi\API\Event\AuthorizeEvent;
 use Civi\Core\Event\GenericHookEvent;
 use Civi\Core\Service\AutoSubscriber;
+use Civi\Standalone\Event\LoginEvent;
 use Civi\Warden\Audit;
 use Civi\Warden\Escape;
 use Civi\Warden\Options;
 use Civi\Warden\ProviderRepository;
+use Civi\Warden\Value;
 
+// @mago-expect lint:cyclomatic-complexity
+// Three denial layers that must agree; separating them would make it easy for
+// one to drift.
 /**
  * Denying password login in `required` mode.
  *
@@ -51,13 +56,16 @@ final class PasswordLoginSubscriber extends AutoSubscriber {
     ];
   }
 
-  public static function onLogin(GenericHookEvent $event): void {
-    $stage = self::stringProp($event, 'stage');
+  public static function onLogin(LoginEvent $event): void {
+    // Typed as LoginEvent, not GenericHookEvent: `stage`, `userID` and
+    // `stopReason` are real declared properties there, so the compiler checks
+    // the names instead of them resolving through __get to NULL.
+    $stage = $event->stage;
     if ($stage !== 'pre_credentials_check' && $stage !== 'pre_send_password_reset') {
       return;
     }
 
-    $userId = self::intProp($event, 'userID');
+    $userId = Value::nullableInt($event->userID);
     if (!self::denied($userId)) {
       return;
     }
@@ -72,6 +80,10 @@ final class PasswordLoginSubscriber extends AutoSubscriber {
       return;
     }
 
+    // `success` is a by-reference hook field, not a declared property, so it
+    // is reached through GenericHookEvent's __set. Writing it is how core's
+    // own listener answers this event too.
+    // @phpstan-ignore property.notFound (dynamic hook field, set via __set)
     $event->success = FALSE;
   }
 
@@ -93,7 +105,13 @@ final class PasswordLoginSubscriber extends AutoSubscriber {
 
     $event->setAuthorized(FALSE);
     $event->stopPropagation();
-    Audit::record(Options::EVENT_LOGIN_DENIED, NULL, NULL, 'password_reset_blocked', 'User.passwordReset in required mode');
+    Audit::record(
+      Options::EVENT_LOGIN_DENIED,
+      NULL,
+      NULL,
+      'password_reset_blocked',
+      'User.passwordReset in required mode',
+    );
   }
 
   /**
@@ -118,7 +136,9 @@ final class PasswordLoginSubscriber extends AutoSubscriber {
     catch (\Throwable $e) {
       // Failing OPEN is deliberate. If warden cannot read its own providers,
       // the alternative is a site nobody can log into because a query failed.
-      \Civi::log()->error('warden: could not evaluate login mode, allowing password login: {msg}', ['msg' => $e->getMessage()]);
+      \Civi::log()->error('warden: could not evaluate login mode, allowing password login: {msg}', [
+        'msg' => $e->getMessage(),
+      ]);
 
       return FALSE;
     }
@@ -131,34 +151,24 @@ final class PasswordLoginSubscriber extends AutoSubscriber {
    */
   private static function describe(mixed $request): array {
     if (is_object($request) && method_exists($request, 'getEntityName') && method_exists($request, 'getActionName')) {
-      return [(string) $request->getEntityName(), (string) $request->getActionName()];
+      return [Value::str($request->getEntityName()), Value::str($request->getActionName())];
     }
     if (is_array($request)) {
-      return [(string) ($request['entity'] ?? ''), (string) ($request['action'] ?? '')];
+      return [Value::str($request['entity'] ?? NULL), Value::str($request['action'] ?? NULL)];
     }
 
     return ['', ''];
   }
 
-  private static function stringProp(GenericHookEvent $event, string $name): ?string {
-    /** @var mixed $value */
-    $value = $event->{$name} ?? NULL;
-
-    return is_string($value) ? $value : NULL;
-  }
-
   private static function intProp(GenericHookEvent $event, string $name): ?int {
     /** @var mixed $value */
     $value = $event->{$name} ?? NULL;
-    if (is_numeric($value)) {
-      return (int) $value;
-    }
-    // civi.standalone.checkPassword passes the whole user row.
-    if (is_array($value) && is_numeric($value['id'] ?? NULL)) {
-      return (int) $value['id'];
+    // civi.standalone.checkPassword passes the whole user row, not an id.
+    if (is_array($value)) {
+      return Value::nullableInt($value['id'] ?? NULL);
     }
 
-    return NULL;
+    return Value::nullableInt($value);
   }
 
 }

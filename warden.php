@@ -60,7 +60,7 @@ function warden_civicrm_permission(&$permissions): void {
  * @param array<int, \CRM_Utils_Check_Message> $messages
  * @param array<int, string> $statusNames
  */
-function warden_civicrm_check(&$messages, $statusNames = [], $includeDisabled = FALSE): void {
+function warden_civicrm_check(&$messages, $statusNames = [], bool $includeDisabled = FALSE): void {
   foreach (\Civi\Warden\StatusCheck::messages() as $message) {
     $messages[] = $message;
   }
@@ -83,14 +83,17 @@ function warden_civicrm_heraldChecks(array &$checks): void {
     $minLevel = CRM_Utils_Check::severityMap('error');
     $bad = [];
     foreach (\Civi\Warden\StatusCheck::messages() as $message) {
-      if ($message->getLevel() >= $minLevel) {
-        $bad[] = $message->getTitle();
+      if ($message->getLevel() < $minLevel) {
+        continue;
       }
+      $bad[] = $message->getTitle();
     }
 
-    return $bad === []
-      ? ['status' => 'ok']
-      : ['status' => 'fail', 'detail' => implode('; ', array_unique($bad))];
+    return (
+      $bad === []
+        ? ['status' => 'ok']
+        : ['status' => 'fail', 'detail' => implode('; ', array_unique($bad))]
+    );
   };
 
   try {
@@ -111,13 +114,13 @@ function warden_civicrm_heraldChecks(array &$checks): void {
         $discovery = \Civi\Warden\Discovery::forProvider($provider);
       }
       catch (\Throwable $e) {
-        return [
-          'status' => 'fail',
-          // A `required` provider that is down is a site nobody can log into,
-          // so it says so rather than leaving the reader to infer it.
-          'detail' => ($provider->mode === \Civi\Warden\Options::MODE_REQUIRED ? 'REQUIRED provider unreachable: ' : 'provider unreachable: ')
-            . $e->getMessage(),
-        ];
+        // A `required` provider that is down is a site nobody can log into,
+        // so it says so rather than leaving the reader to infer it.
+        $lead = $provider->mode === \Civi\Warden\Options::MODE_REQUIRED
+          ? 'REQUIRED provider unreachable: '
+          : 'provider unreachable: ';
+
+        return ['status' => 'fail', 'detail' => $lead . $e->getMessage()];
       }
 
       $keys = new \Civi\Warden\JwksKeySource($provider, $discovery);
@@ -132,7 +135,7 @@ function warden_civicrm_heraldChecks(array &$checks): void {
       // Stale beyond four lifetimes means refreshes have been failing quietly
       // while cached keys kept logins working — the window in which a rotated
       // key becomes an outage nobody saw coming.
-      if ($age !== NULL && $age > \Civi\Warden\Cache::ttl() * 4) {
+      if ($age !== NULL && $age > (\Civi\Warden\Cache::ttl() * 4)) {
         return ['status' => 'fail', 'detail' => sprintf('key set has not refreshed for %d seconds', $age)];
       }
 

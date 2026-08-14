@@ -22,7 +22,7 @@ final class RedirectUri {
   public const ROUTE = 'civicrm/warden/return';
 
   public static function get(): string {
-    return \CRM_Utils_System::url(self::ROUTE, NULL, TRUE, NULL, FALSE, TRUE, TRUE);
+    return \CRM_Utils_System::url(self::ROUTE, '', TRUE, NULL, FALSE, TRUE, TRUE);
   }
 
   /**
@@ -34,9 +34,11 @@ final class RedirectUri {
   public static function looksResolvable(): bool {
     $uri = self::get();
 
-    return str_starts_with($uri, 'https://')
+    return (
+      str_starts_with($uri, 'https://')
       && !str_contains($uri, 'localhost')
-      && filter_var($uri, FILTER_VALIDATE_URL) !== FALSE;
+      && filter_var($uri, FILTER_VALIDATE_URL) !== FALSE
+    );
   }
 
 }

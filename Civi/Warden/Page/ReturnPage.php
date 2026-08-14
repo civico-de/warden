@@ -10,6 +10,7 @@ use Civi\Warden\LandingUrl;
 use Civi\Warden\LoginFlow;
 use Civi\Warden\Options;
 use Civi\Warden\RateLimiter;
+use Civi\Warden\Value;
 
 /**
  * `civicrm/warden/return` — the OAuth 2.0 redirect_uri.
@@ -33,15 +34,21 @@ final class ReturnPage {
 
     // The provider reporting its own failure. Recorded, but the description is
     // attacker-controlled text, so only the code is kept and it is truncated.
-    $error = \CRM_Utils_Request::retrieveValue('error', 'String', NULL, FALSE, 'GET');
-    if (is_string($error) && $error !== '') {
-      Audit::record(Options::EVENT_LOGIN_FAILURE, NULL, NULL, 'provider_error', substr(preg_replace('/[^a-z_]/', '', strtolower($error)) ?? '', 0, 64));
+    $error = Value::nullableStr(\CRM_Utils_Request::retrieveValue('error', 'String', NULL, FALSE, 'GET'));
+    if ($error !== NULL) {
+      Audit::record(
+        Options::EVENT_LOGIN_FAILURE,
+        NULL,
+        NULL,
+        'provider_error',
+        substr(preg_replace('/[^a-z_]/', '', strtolower($error)) ?? '', 0, 64),
+      );
       self::fail('Your identity provider declined the sign-in.');
     }
 
-    $state = \CRM_Utils_Request::retrieveValue('state', 'String', NULL, FALSE, 'GET');
-    $code = \CRM_Utils_Request::retrieveValue('code', 'String', NULL, FALSE, 'GET');
-    if (!is_string($state) || $state === '' || !is_string($code) || $code === '') {
+    $state = Value::nullableStr(\CRM_Utils_Request::retrieveValue('state', 'String', NULL, FALSE, 'GET'));
+    $code = Value::nullableStr(\CRM_Utils_Request::retrieveValue('code', 'String', NULL, FALSE, 'GET'));
+    if ($state === NULL || $code === NULL) {
       Audit::record(Options::EVENT_LOGIN_FAILURE, NULL, NULL, 'missing_parameters', 'callback without state or code');
       self::fail('This sign-in link is incomplete. Please start again.');
     }
@@ -68,14 +75,17 @@ final class ReturnPage {
     }
 
     \CRM_Utils_System::redirect(
-      rtrim((string) \CRM_Utils_Constant::value('CIVICRM_UF_BASEURL'), '/') . LandingUrl::sanitise($result['landing']),
+      rtrim(Value::str(\CRM_Utils_Constant::value('CIVICRM_UF_BASEURL')), '/')
+        . LandingUrl::sanitise($result['landing']),
     );
   }
 
   private static function fail(string $message): never {
     \CRM_Core_Session::setStatus($message, 'Sign-in', 'error');
-    \CRM_Utils_System::redirect(rtrim((string) \CRM_Utils_Constant::value('CIVICRM_UF_BASEURL'), '/') . '/civicrm/login');
-    exit;
+    \CRM_Utils_System::redirect(
+      rtrim(Value::str(\CRM_Utils_Constant::value('CIVICRM_UF_BASEURL')), '/') . '/civicrm/login',
+    );
+    exit();
   }
 
 }

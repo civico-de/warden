@@ -77,7 +77,7 @@ final class SessionAndSecretHeadlessTest extends TestCase implements HeadlessInt
   }
 
   public function testStateCannotBeRedeemedWithoutASession(): void {
-    $storage = new class implements StateStorage {
+    $storage = new class() implements StateStorage {
 
       /** @var array<string, array<string, mixed>> */
       public array $states = [];
@@ -122,7 +122,7 @@ final class SessionAndSecretHeadlessTest extends TestCase implements HeadlessInt
    * lives in StateStoreTest.
    */
   public function testStateSurvivesUntilTheSessionIdRotates(): void {
-    $storage = new class extends CiviStateStorage {
+    $storage = new class() extends CiviStateStorage {
 
       public string $id = 'pre-login-session';
 
@@ -153,7 +153,7 @@ final class SessionAndSecretHeadlessTest extends TestCase implements HeadlessInt
   }
 
   public function testTheStateStoreKeepsTheVerifierAndNonceItWasGiven(): void {
-    $storage = new class extends CiviStateStorage {
+    $storage = new class() extends CiviStateStorage {
 
       public function sessionId(): string {
         return 'fixed-session';
@@ -198,7 +198,7 @@ final class SessionAndSecretHeadlessTest extends TestCase implements HeadlessInt
    * repointed at it.
    */
   public function testAProviderWithASecretCannotBeSavedWithoutAKey(): void {
-    $this->withoutCredKey(function (): void {
+    $this->withoutCredKey(static function (): void {
       self::assertFalse(Secret::keyAvailable(), 'the registry override did not take effect');
 
       $threw = NULL;
@@ -209,7 +209,7 @@ final class SessionAndSecretHeadlessTest extends TestCase implements HeadlessInt
             'label' => 'Needs a key',
             'issuer' => 'https://id.example.org/realms/main',
             'client_id' => 'civicrm',
-            'client_secret' => 'super-secret',
+            'client_secret' => self::throwawayCredential(),
             'scopes' => 'openid',
             'mode' => Options::MODE_OPTIONAL,
             'allowed_algorithms' => 'RS256',
@@ -233,7 +233,7 @@ final class SessionAndSecretHeadlessTest extends TestCase implements HeadlessInt
   }
 
   public function testAnUnprotectedSecretIsRecognisedAsSuch(): void {
-    $this->withoutCredKey(function (): void {
+    $this->withoutCredKey(static function (): void {
       self::assertFalse(Secret::isProtected('a-bare-secret'));
       self::assertTrue(Secret::isProtected(''));
     });
@@ -333,8 +333,15 @@ final class SessionAndSecretHeadlessTest extends TestCase implements HeadlessInt
   }
 
   public function testPruningDeletesOldRowsAndKeepsRecentOnes(): void {
-    WardenAudit::create(FALSE)->addValue('event', Options::EVENT_LOGIN_SUCCESS)->addValue('reason', 'recent')->execute();
-    $old = WardenAudit::create(FALSE)->addValue('event', Options::EVENT_LOGIN_SUCCESS)->addValue('reason', 'ancient')->execute()->single();
+    WardenAudit::create(FALSE)
+      ->addValue('event', Options::EVENT_LOGIN_SUCCESS)
+      ->addValue('reason', 'recent')
+      ->execute();
+    $old = WardenAudit::create(FALSE)
+      ->addValue('event', Options::EVENT_LOGIN_SUCCESS)
+      ->addValue('reason', 'ancient')
+      ->execute()
+      ->single();
     \CRM_Core_DAO::executeQuery(
       'UPDATE civicrm_warden_audit SET created_date = DATE_SUB(NOW(), INTERVAL 400 DAY) WHERE id = %1',
       [1 => [$old['id'], 'Integer']],
@@ -390,10 +397,19 @@ final class SessionAndSecretHeadlessTest extends TestCase implements HeadlessInt
       ->addValue('contact_id', $contact['id'])
       ->addValue('username', $email)
       ->addValue('uf_name', $email)
-      ->addValue('password', 'not-a-real-password-' . bin2hex(random_bytes(8)))
+      ->addValue('password', self::throwawayCredential())
       ->addValue('is_active', TRUE)
       ->execute()
       ->single()['id'];
+  }
+
+  /**
+   * A random value for the required password column. These users only ever
+   * authenticate through warden, so the value is never used to log in — it
+   * exists because the User entity refuses an empty one.
+   */
+  private static function throwawayCredential(): string {
+    return 'unused-' . bin2hex(random_bytes(12));
   }
 
 }

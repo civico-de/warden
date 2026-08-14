@@ -7,7 +7,10 @@ namespace Civi\Warden\Subscriber;
 use Civi\Core\Event\PreEvent;
 use Civi\Core\Service\AutoSubscriber;
 use Civi\Warden\Secret;
+use Civi\Warden\Value;
 
+// @mago-expect lint:cyclomatic-complexity
+// Encrypt-or-refuse plus the activation guard; both are the same rule.
 /**
  * Encrypting the client secret on the way into the database, and refusing the
  * write when that is not possible.
@@ -74,7 +77,7 @@ final class ProviderSecretSubscriber extends AutoSubscriber {
   private static function refuseActivationWithUnprotectedSecret(PreEvent $event, string $op): void {
     /** @var array<string, mixed> $params */
     $params = $event->params;
-    if (($params['is_active'] ?? NULL) != TRUE) {
+    if (!Value::bool($params['is_active'] ?? NULL)) {
       return;
     }
     if (Secret::keyAvailable()) {

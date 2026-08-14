@@ -18,9 +18,22 @@ use Civi\Api4\WardenProvider;
 final class ProviderRepository {
 
   private const FIELDS = [
-    'id', 'name', 'label', 'issuer', 'client_id', 'client_secret', 'scopes',
-    'mode', 'allowed_algorithms', 'claim_role_map', 'role_sync_mode',
-    'provision_policy', 'link_policy', 'default_role_names', 'is_active', 'weight',
+    'id',
+    'name',
+    'label',
+    'issuer',
+    'client_id',
+    'client_secret',
+    'scopes',
+    'mode',
+    'allowed_algorithms',
+    'claim_role_map',
+    'role_sync_mode',
+    'provision_policy',
+    'link_policy',
+    'default_role_names',
+    'is_active',
+    'weight',
   ];
 
   public static function find(int $id): ?Provider {
@@ -30,7 +43,7 @@ final class ProviderRepository {
       ->execute()
       ->first();
 
-    return is_array($row) ? Provider::fromArray($row) : NULL;
+    return is_array($row) ? Provider::fromArray(Value::row($row)) : NULL;
   }
 
   public static function findByName(string $name): ?Provider {
@@ -40,7 +53,7 @@ final class ProviderRepository {
       ->execute()
       ->first();
 
-    return is_array($row) ? Provider::fromArray($row) : NULL;
+    return is_array($row) ? Provider::fromArray(Value::row($row)) : NULL;
   }
 
   /**
@@ -62,7 +75,7 @@ final class ProviderRepository {
 
     $out = [];
     foreach ($rows as $row) {
-      $provider = Provider::fromArray($row);
+      $provider = Provider::fromArray(Value::row($row));
       if ($provider->usable()) {
         $out[] = $provider;
       }
@@ -79,7 +92,7 @@ final class ProviderRepository {
   public static function all(): array {
     $out = [];
     foreach (WardenProvider::get(FALSE)->setSelect(self::FIELDS)->addOrderBy('weight', 'ASC')->execute() as $row) {
-      $out[] = Provider::fromArray($row);
+      $out[] = Provider::fromArray(Value::row($row));
     }
 
     return $out;

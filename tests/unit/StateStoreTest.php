@@ -4,8 +4,8 @@ declare(strict_types = 1);
 
 namespace Civi\Warden\Tests\Unit;
 
-use Civi\Warden\StateStorage;
 use Civi\Warden\StateStore;
+use Civi\Warden\Tests\Support\ArrayStateStorage;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -100,7 +100,7 @@ final class StateStoreTest extends TestCase {
     $storage = new ArrayStateStorage('session-a');
     $store = $this->store($storage, 600);
 
-    $created = 1000000;
+    $created = 1_000_000;
     $state = $store->create(['nonce' => 'n1'], $created);
 
     self::assertNotNull($store->consume($state, $created + 599));
@@ -141,37 +141,6 @@ final class StateStoreTest extends TestCase {
     }
 
     self::assertCount(50, $seen, 'every state must be distinct');
-  }
-
-}
-
-/**
- * In-memory storage with a settable session id, so the binding rule can be
- * exercised without a PHP session.
- */
-final class ArrayStateStorage implements StateStorage {
-
-  /** @var array<string, array<string, mixed>> */
-  public array $states = [];
-
-  public function __construct(public string $sessionId) {}
-
-  /**
-   * @return array<string, array<string, mixed>>
-   */
-  public function read(): array {
-    return $this->states;
-  }
-
-  /**
-   * @param array<string, array<string, mixed>> $states
-   */
-  public function write(array $states): void {
-    $this->states = $states;
-  }
-
-  public function sessionId(): string {
-    return $this->sessionId;
   }
 
 }

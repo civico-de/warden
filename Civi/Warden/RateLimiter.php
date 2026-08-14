@@ -45,11 +45,15 @@ final class RateLimiter {
         ->selectRowCount()
         ->addWhere('source_ip', '=', $ip)
         ->addWhere('created_date', '>=', $since)
-        ->addWhere('event', 'IN', [
-          Options::EVENT_LOGIN_FAILURE,
-          Options::EVENT_LOGIN_DENIED,
-          Options::EVENT_RELINK_REFUSED,
-        ])
+        ->addWhere(
+          'event',
+          'IN',
+          [
+            Options::EVENT_LOGIN_FAILURE,
+            Options::EVENT_LOGIN_DENIED,
+            Options::EVENT_RELINK_REFUSED,
+          ],
+        )
         ->execute()
         ->count();
     }

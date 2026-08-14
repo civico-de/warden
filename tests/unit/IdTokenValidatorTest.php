@@ -17,5 +17,4 @@ use Civi\Warden\Tests\Support\IdTokenValidatorContract;
  * @covers \Civi\Warden\IdTokenClaims
  * @covers \Civi\Warden\TokenValidationException
  */
-final class IdTokenValidatorTest extends IdTokenValidatorContract {
-}
+final class IdTokenValidatorTest extends IdTokenValidatorContract {}

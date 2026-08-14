@@ -8,6 +8,8 @@ use Civi\Api4\Contact;
 use Civi\Api4\Role;
 use Civi\Api4\User;
 
+// @mago-expect lint:cyclomatic-complexity
+// A thin, defensive facade over APIv4 User/Role writes.
 /**
  * Everything warden does to `civicrm_uf_match` and `civicrm_user_role`.
  *
@@ -33,24 +35,32 @@ final class Users {
    * correct if the service ever moves.
    */
   public static function hasPermission(int $userId, string $permission): bool {
-    if (class_exists(\Civi\Standalone\Security::class)) {
-      try {
-        return (bool) \Civi\Standalone\Security::singleton()->checkPermission($permission, $userId);
+    // `standaloneusers.security` is the 6.15+ service; Security::singleton()
+    // is deprecated there and is the only route on 6.14. Try the service
+    // first so warden does not call a deprecated method on a modern site.
+    try {
+      $security = \Civi::container()->has('standaloneusers.security')
+        ? \Civi::service('standaloneusers.security')
+        : NULL;
+      if (is_object($security) && method_exists($security, 'checkPermission')) {
+        return (bool) $security->checkPermission($permission, $userId);
       }
-      catch (\Throwable) {
-        // Fall through to the query below.
-      }
+    }
+    catch (\Throwable $e) {
+      \Civi::log()->warning('warden: standaloneusers.security could not answer, falling back: {msg}', [
+        'msg' => $e->getMessage(),
+      ]);
     }
 
     try {
-      $roleIds = self::find($userId)['roles'] ?? [];
-      if (!is_array($roleIds) || $roleIds === []) {
+      $roleIds = Value::ints(self::find($userId)['roles'] ?? NULL);
+      if ($roleIds === []) {
         return FALSE;
       }
 
       $lists = Role::get(FALSE)
         ->addSelect('permissions')
-        ->addWhere('id', 'IN', array_values($roleIds))
+        ->addWhere('id', 'IN', $roleIds)
         ->addWhere('is_active', '=', TRUE)
         ->execute()
         ->column('permissions');
@@ -72,14 +82,13 @@ final class Users {
    * @return array<string, mixed>|null
    */
   public static function find(int $userId): ?array {
-    /** @var array<string, mixed>|null $user */
     $user = User::get(FALSE)
       ->addSelect('id', 'contact_id', 'username', 'uf_name', 'is_active', 'roles')
       ->addWhere('id', '=', $userId)
       ->execute()
       ->first();
 
-    return $user;
+    return is_array($user) ? Value::row($user) : NULL;
   }
 
   /**
@@ -103,7 +112,9 @@ final class Users {
 
     // Ambiguous is refused, not guessed: two accounts sharing an address is
     // exactly the situation where picking one silently is a takeover.
-    return count($users) === 1 ? $users->first() : NULL;
+    $user = count($users) === 1 ? $users->first() : NULL;
+
+    return is_array($user) ? Value::row($user) : NULL;
   }
 
   /**
@@ -140,11 +151,12 @@ final class Users {
     }
 
     $created = $create->execute()->first();
-    if (!is_array($created) || !isset($created['id'])) {
+    $newId = is_array($created) ? Value::nullableInt($created['id'] ?? NULL) : NULL;
+    if ($newId === NULL) {
       throw new \CRM_Core_Exception('warden: user creation returned no id');
     }
 
-    return (int) $created['id'];
+    return $newId;
   }
 
   /**
@@ -166,18 +178,18 @@ final class Users {
    */
   public static function roleNames(int $userId): array {
     $user = self::find($userId);
-    $roleIds = $user['roles'] ?? [];
-    if (!is_array($roleIds) || $roleIds === []) {
+    $roleIds = Value::ints($user['roles'] ?? NULL);
+    if ($roleIds === []) {
       return [];
     }
 
-    $names = Role::get(FALSE)
-      ->addSelect('name')
-      ->addWhere('id', 'IN', array_values($roleIds))
-      ->execute()
-      ->column('name');
-
-    return array_values(array_filter($names, static fn (mixed $n): bool => is_string($n) && $n !== ''));
+    return Value::strings(
+      Role::get(FALSE)
+        ->addSelect('name')
+        ->addWhere('id', 'IN', $roleIds)
+        ->execute()
+        ->column('name'),
+    );
   }
 
   /**
@@ -197,14 +209,14 @@ final class Users {
       return [];
     }
 
-    $ids = Role::get(FALSE)
-      ->addSelect('id')
-      ->addWhere('name', 'IN', $names)
-      ->addWhere('is_active', '=', TRUE)
-      ->execute()
-      ->column('id');
-
-    return array_values(array_map(intval(...), $ids));
+    return Value::ints(
+      Role::get(FALSE)
+        ->addSelect('id')
+        ->addWhere('name', 'IN', $names)
+        ->addWhere('is_active', '=', TRUE)
+        ->execute()
+        ->column('id'),
+    );
   }
 
   /**
@@ -219,13 +231,15 @@ final class Users {
       return [];
     }
 
-    $known = Role::get(FALSE)
-      ->addSelect('name')
-      ->addWhere('name', 'IN', $names)
-      ->execute()
-      ->column('name');
+    $known = Value::strings(
+      Role::get(FALSE)
+        ->addSelect('name')
+        ->addWhere('name', 'IN', $names)
+        ->execute()
+        ->column('name'),
+    );
 
-    return array_values(array_diff($names, array_filter($known, is_string(...))));
+    return array_values(array_diff($names, $known));
   }
 
   /**
@@ -248,11 +262,12 @@ final class Users {
     }
 
     $contact = $create->execute()->first();
-    if (!is_array($contact) || !isset($contact['id'])) {
+    $contactId = is_array($contact) ? Value::nullableInt($contact['id'] ?? NULL) : NULL;
+    if ($contactId === NULL) {
       throw new \CRM_Core_Exception('warden: contact creation returned no id');
     }
 
-    return (int) $contact['id'];
+    return $contactId;
   }
 
 }

@@ -6,6 +6,11 @@ namespace Civi\Warden;
 
 use CRM_Warden_ExtensionUtil as E;
 
+// @mago-expect lint:cyclomatic-complexity
+// @mago-expect lint:too-many-methods
+// @mago-expect lint:kan-defect
+// One method per configuration problem, plus a dispatcher. The count IS the
+// feature — each is an independent thing an operator can get wrong.
 /**
  * Configuration problems, surfaced on the CiviCRM status page before somebody
  * discovers them by being unable to log in.
@@ -22,24 +27,24 @@ final class StatusCheck {
   public static function messages(): array {
     $messages = [];
 
-    foreach (
-      [
-        self::escapeHatchEngaged(...),
-        self::checkPasswordLayerUnavailable(...),
-        self::credKeyMissing(...),
-        self::redirectUriUnresolvable(...),
-        self::secureCookieMismatch(...),
-        self::providerProblems(...),
-      ] as $check
-    ) {
+    foreach ([
+      self::escapeHatchEngaged(...),
+      self::checkPasswordLayerUnavailable(...),
+      self::credKeyMissing(...),
+      self::redirectUriUnresolvable(...),
+      self::secureCookieMismatch(...),
+      self::providerProblems(...),
+    ] as $check) {
       try {
-        foreach ($check() as $message) {
-          $messages[] = $message;
-        }
+        $produced = $check();
       }
       catch (\Throwable $e) {
         // A check that throws must not take the status page down with it.
         \Civi::log()->error('warden: status check failed: {msg}', ['msg' => $e->getMessage()]);
+        continue;
+      }
+      foreach ($produced as $message) {
+        $messages[] = $message;
       }
     }
 
@@ -57,7 +62,9 @@ final class StatusCheck {
     return [
       new \CRM_Utils_Check_Message(
         'warden_disabled_by_constant',
-        E::ts('CIVICRM_WARDEN_DISABLE is defined in civicrm.settings.php, so warden is switched off entirely: no single sign-on, and no password-login restrictions. This is the lock-out escape hatch. Remove the constant to switch warden back on.'),
+        E::ts(
+          'CIVICRM_WARDEN_DISABLE is defined in civicrm.settings.php, so warden is switched off entirely: no single sign-on, and no password-login restrictions. This is the lock-out escape hatch. Remove the constant to switch warden back on.',
+        ),
         E::ts('warden is disabled by constant'),
         \Psr\Log\LogLevel::WARNING,
         'fa-shield',
@@ -101,7 +108,7 @@ final class StatusCheck {
   }
 
   public static function coreOlderThan(string $version): bool {
-    return version_compare((string) \CRM_Utils_System::version(), $version, '<');
+    return version_compare(Value::str(\CRM_Utils_System::version()), $version, '<');
   }
 
   /**
@@ -114,17 +121,22 @@ final class StatusCheck {
 
     $configured = 0;
     foreach (ProviderRepository::all() as $provider) {
-      if ($provider->clientSecret !== '') {
-        $configured++;
+      if ($provider->clientSecret === '') {
+        continue;
       }
+      $configured++;
     }
+
+    $exposure = $configured > 0
+      ? E::ts('%1 provider(s) currently hold a secret that is NOT encrypted.', [1 => $configured])
+      : '';
 
     return [
       new \CRM_Utils_Check_Message(
         'warden_cred_key_missing',
         E::ts(
           'This site has no CIVICRM_CRED_KEYS, so CiviCRM would "encrypt" secrets with a no-op cipher. warden refuses to save a client secret in that state, which means a confidential-client provider cannot be configured until you fix it. Add a line like <code>define(\'CIVICRM_CRED_KEYS\', \'aes-cbc:hkdf-sha256:\' . \'&lt;a long random string&gt;\');</code> to civicrm.settings.php and re-save each provider. %1',
-          [1 => $configured > 0 ? E::ts('%1 provider(s) currently hold a secret that is NOT encrypted.', [1 => $configured]) : ''],
+          [1 => $exposure],
         ),
         E::ts('warden: no encryption key configured'),
         $configured > 0 ? \Psr\Log\LogLevel::CRITICAL : \Psr\Log\LogLevel::WARNING,
@@ -169,7 +181,7 @@ final class StatusCheck {
    * @return list<\CRM_Utils_Check_Message>
    */
   private static function secureCookieMismatch(): array {
-    if (\CIVICRM_UF !== 'Standalone') {
+    if (Value::str(\CRM_Utils_Constant::value('CIVICRM_UF')) !== 'Standalone') {
       return [];
     }
 
@@ -216,7 +228,9 @@ final class StatusCheck {
     if ($provider->clientSecret !== '' && !Secret::isProtected(self::rawSecret($provider))) {
       $messages[] = new \CRM_Utils_Check_Message(
         'warden_plaintext_secret_' . $provider->id,
-        E::ts('The client secret for provider "%1" is stored unencrypted. Configure CIVICRM_CRED_KEYS and save the provider again.', [1 => $provider->name]),
+        E::ts('The client secret for provider "%1" is stored unencrypted. Configure CIVICRM_CRED_KEYS and save the provider again.', [
+          1 => $provider->name,
+        ]),
         E::ts('warden: unencrypted client secret'),
         \Psr\Log\LogLevel::CRITICAL,
         'fa-key',
@@ -226,7 +240,10 @@ final class StatusCheck {
     if ($provider->allowedAlgorithms === []) {
       $messages[] = new \CRM_Utils_Check_Message(
         'warden_no_algorithms_' . $provider->id,
-        E::ts('Provider "%1" has an empty signing-algorithm allow-list, so every token it issues will be rejected. Set it to RS256 unless the provider says otherwise.', [1 => $provider->name]),
+        E::ts(
+          'Provider "%1" has an empty signing-algorithm allow-list, so every token it issues will be rejected. Set it to RS256 unless the provider says otherwise.',
+          [1 => $provider->name],
+        ),
         E::ts('warden: no signing algorithm allowed'),
         \Psr\Log\LogLevel::ERROR,
         'fa-shield',
@@ -257,7 +274,10 @@ final class StatusCheck {
     catch (\Throwable $e) {
       $messages[] = new \CRM_Utils_Check_Message(
         'warden_discovery_' . $provider->id,
-        E::ts('Discovery for provider "%1" is failing: %2', [1 => $provider->name, 2 => htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8')]),
+        E::ts('Discovery for provider "%1" is failing: %2', [
+          1 => $provider->name,
+          2 => htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8'),
+        ]),
         E::ts('warden: identity provider unreachable'),
         $provider->mode === Options::MODE_REQUIRED ? \Psr\Log\LogLevel::CRITICAL : \Psr\Log\LogLevel::ERROR,
         'fa-plug',
@@ -266,9 +286,7 @@ final class StatusCheck {
       return $messages;
     }
 
-    $messages = [...$messages, ...self::checkAlgorithmOverlap($provider, $discovery)];
-
-    return $messages;
+    return [...$messages, ...self::checkAlgorithmOverlap($provider, $discovery)];
   }
 
   /**
@@ -332,7 +350,10 @@ final class StatusCheck {
     if (!$discovery->supportsPkceS256) {
       $messages[] = new \CRM_Utils_Check_Message(
         'warden_no_pkce_' . $provider->id,
-        E::ts('Provider "%1" does not advertise S256 in code_challenge_methods_supported. warden sends PKCE regardless, but the provider may be ignoring it — check whether the client is registered as a public client that requires PKCE.', [1 => $provider->name]),
+        E::ts(
+          'Provider "%1" does not advertise S256 in code_challenge_methods_supported. warden sends PKCE regardless, but the provider may be ignoring it — check whether the client is registered as a public client that requires PKCE.',
+          [1 => $provider->name],
+        ),
         E::ts('warden: provider does not advertise PKCE'),
         \Psr\Log\LogLevel::NOTICE,
         'fa-shield',
@@ -370,7 +391,7 @@ final class StatusCheck {
       ->execute()
       ->first();
 
-    return is_array($row) && is_string($row['client_secret'] ?? NULL) ? $row['client_secret'] : NULL;
+    return is_array($row) ? Value::nullableStr($row['client_secret'] ?? NULL) : NULL;
   }
 
 }

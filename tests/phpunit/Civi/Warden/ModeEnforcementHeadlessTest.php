@@ -8,6 +8,7 @@ use Civi\Api4\Role;
 use Civi\Api4\User;
 use Civi\Api4\WardenProvider;
 use Civi\Core\Event\GenericHookEvent;
+use Civi\Standalone\Event\LoginEvent;
 use Civi\Test;
 use Civi\Test\HeadlessInterface;
 use Civi\Test\TransactionalInterface;
@@ -68,14 +69,12 @@ final class ModeEnforcementHeadlessTest extends TestCase implements HeadlessInte
       ->execute();
   }
 
-  private function loginEvent(string $stage, ?int $userId): GenericHookEvent {
-    $stopReason = NULL;
-
-    return GenericHookEvent::create([
-      'stage' => $stage,
-      'userID' => $userId,
-      'stopReason' => &$stopReason,
-    ]);
+  /**
+   * The real event class core dispatches, not a look-alike — `stage`,
+   * `userID` and `stopReason` are declared properties on it.
+   */
+  private function loginEvent(string $stage, ?int $userId): LoginEvent {
+    return new LoginEvent($stage, $userId);
   }
 
   // --- Layer 1: civi.standalone.login -----------------------------------
@@ -120,7 +119,7 @@ final class ModeEnforcementHeadlessTest extends TestCase implements HeadlessInte
     $this->requireSso();
     $success = NULL;
     $event = GenericHookEvent::create([
-      'cred' => ['username' => 'plain@example.org', 'password' => 'whatever'],
+      'cred' => ['username' => 'plain@example.org', 'password' => self::throwawayCredential()],
       'user' => ['id' => $this->plainUserId],
       'success' => &$success,
     ]);
@@ -133,7 +132,7 @@ final class ModeEnforcementHeadlessTest extends TestCase implements HeadlessInte
   public function testTheCheckPasswordBackstopIsInertWithoutRequiredMode(): void {
     $success = NULL;
     $event = GenericHookEvent::create([
-      'cred' => ['username' => 'plain@example.org', 'password' => 'whatever'],
+      'cred' => ['username' => 'plain@example.org', 'password' => self::throwawayCredential()],
       'user' => ['id' => $this->plainUserId],
       'success' => &$success,
     ]);
@@ -255,7 +254,7 @@ final class ModeEnforcementHeadlessTest extends TestCase implements HeadlessInte
   public function testThePasswordDenialListenerIsRegistered(): void {
     $this->requireSso();
 
-    $event = new \Civi\Standalone\Event\LoginEvent('pre_credentials_check', $this->plainUserId);
+    $event = new LoginEvent('pre_credentials_check', $this->plainUserId);
     \Civi::dispatcher()->dispatch('civi.standalone.login', $event);
 
     self::assertSame(
@@ -300,7 +299,11 @@ final class ModeEnforcementHeadlessTest extends TestCase implements HeadlessInte
 
     $markup = \CRM_Core_Region::instance('page-body')->render('', FALSE);
 
-    self::assertStringContainsString('warden-login-options', $markup, 'no sign-on button was added to the login screen');
+    self::assertStringContainsString(
+      'warden-login-options',
+      $markup,
+      'no sign-on button was added to the login screen',
+    );
     self::assertStringContainsString('Button IdP', $markup);
     self::assertStringContainsString('civicrm/warden/login', $markup);
   }
@@ -344,7 +347,7 @@ final class ModeEnforcementHeadlessTest extends TestCase implements HeadlessInte
       ->addValue('contact_id', $contact['id'])
       ->addValue('username', $email)
       ->addValue('uf_name', $email)
-      ->addValue('password', 'not-a-real-password-' . bin2hex(random_bytes(8)))
+      ->addValue('password', self::throwawayCredential())
       ->addValue('is_active', TRUE);
 
     if ($roleIds !== []) {
@@ -352,6 +355,15 @@ final class ModeEnforcementHeadlessTest extends TestCase implements HeadlessInte
     }
 
     return (int) $create->execute()->single()['id'];
+  }
+
+  /**
+   * A random value for the required password column. These users only ever
+   * authenticate through warden, so the value is never used to log in — it
+   * exists because the User entity refuses an empty one.
+   */
+  private static function throwawayCredential(): string {
+    return 'unused-' . bin2hex(random_bytes(12));
   }
 
 }

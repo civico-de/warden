@@ -12,10 +12,11 @@ namespace Civi\Warden;
  * `authx_login()` has regenerated the id, a state created before it no longer
  * matches, and `StateStore::consume()` refuses. Consuming first is therefore
  * not a stylistic preference — it is the only order that works.
+ *
+ * Deliberately not `final`: the headless suite overrides `sessionId()`,
+ * because the CLI SAPI cannot start a PHP session once PHPUnit has written
+ * output and a skipped ordering test would prove nothing.
  */
-// Not final so the headless suite can override sessionId(): the CLI SAPI
-// cannot start a PHP session once PHPUnit has written output, and a skipped
-// ordering test would prove nothing.
 class CiviStateStorage implements StateStorage {
 
   private const SCOPE = 'warden';

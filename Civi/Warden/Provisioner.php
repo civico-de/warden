@@ -6,6 +6,9 @@ namespace Civi\Warden;
 
 use Civi\Api4\WardenIdentity;
 
+// @mago-expect lint:cyclomatic-complexity
+// The three resolution outcomes and their refusals are one decision and read
+// best in one place.
 /**
  * Turning a verified ID token into a CiviCRM user id.
  *
@@ -35,8 +38,8 @@ final class Provisioner {
 
     $existing = self::linkFor($provider, $subject);
     if ($existing !== NULL) {
-      $userId = (int) $existing['user_id'];
-      self::touch((int) $existing['id']);
+      $userId = Value::int($existing['user_id'] ?? NULL);
+      self::touch(Value::int($existing['id'] ?? NULL));
       self::syncRolesOnLogin($provider, $userId, $claims);
 
       return $userId;
@@ -77,15 +80,13 @@ final class Provisioner {
    * @return array<string, mixed>|null
    */
   private static function linkFor(Provider $provider, string $subject): ?array {
-    /** @var array<string, mixed>|null $row */
-    $row = WardenIdentity::get(FALSE)
+    /** @var array<string, mixed>|null */
+    return WardenIdentity::get(FALSE)
       ->addSelect('id', 'user_id')
       ->addWhere('provider_id', '=', $provider->id)
       ->addWhere('subject', '=', $subject)
       ->execute()
       ->first();
-
-    return $row;
   }
 
   /**
@@ -102,6 +103,10 @@ final class Provisioner {
    * @throws \CRM_Core_Exception
    *   When the account is bound to another subject — a refusal, not a fallthrough.
    */
+  // @mago-expect lint:no-boolean-flag-parameter
+  // `email_verified` is a claim, not a mode switch: it travels with the email
+  // it qualifies, and separating them is how an unverified address gets used
+  // by accident.
   private static function adopt(Provider $provider, string $subject, string $email, bool $emailVerified): ?int {
     if (!$emailVerified) {
       Audit::record(
@@ -120,7 +125,7 @@ final class Provisioner {
     if ($user === NULL || !isset($user['id'])) {
       return NULL;
     }
-    $userId = (int) $user['id'];
+    $userId = Value::int($user['id'] ?? NULL);
 
     if (($user['is_active'] ?? TRUE) === FALSE) {
       Audit::record(Options::EVENT_LOGIN_DENIED, $provider, $userId, 'user_inactive', 'account is disabled', $subject);
@@ -152,7 +157,14 @@ final class Provisioner {
     }
 
     self::link($provider, $userId, $subject);
-    Audit::record(Options::EVENT_PROVISIONED, $provider, $userId, 'adopted', 'linked to an existing account by verified email', $subject);
+    Audit::record(
+      Options::EVENT_PROVISIONED,
+      $provider,
+      $userId,
+      'adopted',
+      'linked to an existing account by verified email',
+      $subject,
+    );
 
     return $userId;
   }
@@ -160,30 +172,40 @@ final class Provisioner {
   /**
    * @throws \CRM_Core_Exception
    */
+  // @mago-expect lint:no-boolean-flag-parameter
+  // As above: the flag qualifies the email beside it.
   private static function create(Provider $provider, IdTokenClaims $claims, ?string $email, bool $emailVerified): int {
     $subject = $claims->subject;
 
     // The username has to be stable and unique. `preferred_username` is
     // neither — two people can hold the same one over time — so it is used
     // only as a readable prefix, with the subject digest carrying uniqueness.
-    $preferred = $claims->claim('preferred_username');
-    $prefix = is_string($preferred) && $preferred !== ''
-      ? preg_replace('/[^A-Za-z0-9._-]/', '', $preferred) ?? ''
-      : '';
-    $username = substr(($prefix === '' ? $provider->name : $prefix) . '-' . substr(Audit::hashSubject($subject), 0, 12), 0, 60);
+    $preferred = Value::nullableStr($claims->claim('preferred_username'));
+    $prefix = $preferred === NULL ? '' : preg_replace('/[^A-Za-z0-9._-]/', '', $preferred) ?? '';
+    $username = substr(
+      ($prefix === '' ? $provider->name : $prefix) . '-' . substr(Audit::hashSubject($subject), 0, 12),
+      0,
+      60,
+    );
 
-    $name = $claims->claim('name');
     $userId = Users::provision(
       $username,
       // Only a verified address is written onto the contact. An unverified one
       // would let the IdP put an arbitrary address on a CiviCRM contact.
       $emailVerified ? $email : NULL,
-      is_string($name) ? $name : NULL,
+      Value::nullableStr($claims->claim('name')),
       RoleMapper::apply($provider, $provider->defaultRoleNames, RoleMapper::rolesFor($provider, $claims->all)),
     );
 
     self::link($provider, $userId, $subject);
-    Audit::record(Options::EVENT_PROVISIONED, $provider, $userId, 'created', 'new user provisioned on first login', $subject);
+    Audit::record(
+      Options::EVENT_PROVISIONED,
+      $provider,
+      $userId,
+      'created',
+      'new user provisioned on first login',
+      $subject,
+    );
 
     return $userId;
   }
@@ -202,21 +224,41 @@ final class Provisioner {
       // The unique index is the real enforcement — a race between two
       // simultaneous first logins lands here, and losing that race must not
       // create a second link.
-      Audit::record(Options::EVENT_RELINK_REFUSED, $provider, $userId, 'link_conflict', 'unique index refused the link', $subject);
+      Audit::record(
+        Options::EVENT_RELINK_REFUSED,
+        $provider,
+        $userId,
+        'link_conflict',
+        'unique index refused the link',
+        $subject,
+      );
 
-      throw new \CRM_Core_Exception('This identity could not be linked to an account. Ask an administrator to check the warden log.', 0, $e);
+      throw new \CRM_Core_Exception(
+        'This identity could not be linked to an account. Ask an administrator to check the warden log.',
+        0,
+        [],
+        $e,
+      );
     }
   }
 
   private static function touch(int $identityId): void {
     try {
+      // APIv4 would have to SELECT then UPDATE, and two simultaneous logins
+      // for the same identity would then lose one increment.
+      // ckconform-ignore raw-sql -- atomic read-modify-write of a counter
       \CRM_Core_DAO::executeQuery(
         'UPDATE civicrm_warden_identity SET last_login_date = NOW(), login_count = login_count + 1 WHERE id = %1',
         [1 => [$identityId, 'Integer']],
       );
     }
     catch (\Throwable $e) {
-      \Civi::log()->warning('warden: could not update identity {id}: {msg}', ['id' => $identityId, 'msg' => $e->getMessage()]);
+      // Error, not warning: this is a database write failing, and a silent
+      // catch would leave last_login_date quietly wrong forever.
+      \Civi::log()->error('warden: could not update identity {id}: {msg}', [
+        'id' => $identityId,
+        'msg' => $e->getMessage(),
+      ]);
     }
   }
 
@@ -237,8 +279,17 @@ final class Provisioner {
     catch (\Throwable $e) {
       // A role sync failure must not silently grant the login the roles it
       // should have lost, so it is loud in the log and in the trail.
-      \Civi::log()->error('warden: role sync failed for user {id}: {msg}', ['id' => $userId, 'msg' => $e->getMessage()]);
-      Audit::record(Options::EVENT_LOGIN_FAILURE, $provider, $userId, 'role_sync_failed', substr($e->getMessage(), 0, 200));
+      \Civi::log()->error('warden: role sync failed for user {id}: {msg}', [
+        'id' => $userId,
+        'msg' => $e->getMessage(),
+      ]);
+      Audit::record(
+        Options::EVENT_LOGIN_FAILURE,
+        $provider,
+        $userId,
+        'role_sync_failed',
+        substr($e->getMessage(), 0, 200),
+      );
     }
   }
 

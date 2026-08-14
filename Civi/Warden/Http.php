@@ -22,15 +22,17 @@ final class Http {
   private static ?ClientInterface $override = NULL;
 
   public static function client(): ClientInterface {
-    return self::$override ?? new Client([
-      // Short and total. An identity provider that cannot answer discovery in
-      // five seconds is down, and a login route that hangs is a denial of
-      // service against the whole site, not just against SSO.
-      'connect_timeout' => 3.0,
-      'timeout' => 5.0,
-      'http_errors' => TRUE,
-      'headers' => ['Accept' => 'application/json'],
-    ]);
+    return (
+      self::$override ?? new Client([
+        // Short and total. An identity provider that cannot answer discovery in
+        // five seconds is down, and a login route that hangs is a denial of
+        // service against the whole site, not just against SSO.
+        'connect_timeout' => 3.0,
+        'timeout' => 5.0,
+        'http_errors' => TRUE,
+        'headers' => ['Accept' => 'application/json'],
+      ])
+    );
   }
 
   /**
@@ -52,7 +54,12 @@ final class Http {
       $response = self::client()->request('GET', $url);
     }
     catch (\Throwable $e) {
-      throw new \CRM_Core_Exception(sprintf('warden could not reach %s: %s', self::redact($url), $e->getMessage()), 0, $e);
+      throw new \CRM_Core_Exception(
+        sprintf('warden could not reach %s: %s', self::redact($url), $e->getMessage()),
+        0,
+        [],
+        $e,
+      );
     }
 
     $decoded = json_decode((string) $response->getBody(), TRUE);

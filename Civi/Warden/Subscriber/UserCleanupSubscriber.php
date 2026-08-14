@@ -47,6 +47,9 @@ final class UserCleanupSubscriber extends AutoSubscriber {
 
     try {
       WardenIdentity::delete(FALSE)->addWhere('user_id', '=', $userId)->execute();
+      // WardenAudit::update() would load and rewrite every matching row inside
+      // the delete's own transaction; one statement is both correct and cheap.
+      // ckconform-ignore raw-sql -- bulk NULL-out during a user delete
       \CRM_Core_DAO::executeQuery(
         'UPDATE civicrm_warden_audit SET user_id = NULL WHERE user_id = %1',
         [1 => [$userId, 'Integer']],

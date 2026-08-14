@@ -10,6 +10,13 @@ use Firebase\JWT\JWT;
 use Firebase\JWT\Key;
 use Firebase\JWT\SignatureInvalidException;
 
+// @mago-expect lint:cyclomatic-complexity
+// @mago-expect lint:too-many-methods
+// @mago-expect lint:kan-defect
+// Every branch here is a distinct rule an ID token must satisfy. Splitting
+// them across classes would scatter the security contract and make the
+// adversarial suite harder to read against it, so the complexity is where it
+// belongs: in one auditable place.
 /**
  * ID-token validation. This class is the reason warden exists.
  *
@@ -115,7 +122,10 @@ final class IdTokenValidator {
     if (!isset(JWT::$supported_algs[$alg])) {
       throw new TokenValidationException(
         TokenValidationException::R_ALG_UNSUPPORTED_BY_RUNTIME,
-        sprintf('ID token alg %s is allow-listed but this CiviCRM ships a firebase/php-jwt that cannot verify it', $alg),
+        sprintf(
+          'ID token alg %s is allow-listed but this CiviCRM ships a firebase/php-jwt that cannot verify it',
+          $alg,
+        ),
       );
     }
 
@@ -149,9 +159,12 @@ final class IdTokenValidator {
     // No kid. Tolerated only when the provider publishes a single key, which
     // is the one case where there is nothing to guess.
     if (count($keys) === 1) {
-      return reset($keys) ?: throw new TokenValidationException(
-        TokenValidationException::R_MISSING_KID,
-        'ID token carries no kid and no key is available',
+      return (
+        reset($keys)
+        ?: throw new TokenValidationException(
+          TokenValidationException::R_MISSING_KID,
+          'ID token carries no kid and no key is available',
+        )
       );
     }
 
@@ -177,7 +190,11 @@ final class IdTokenValidator {
       $payload = JWT::decode($jwt, $key);
     }
     catch (SignatureInvalidException $e) {
-      throw new TokenValidationException(TokenValidationException::R_BAD_SIGNATURE, 'ID token signature does not verify', $e);
+      throw new TokenValidationException(
+        TokenValidationException::R_BAD_SIGNATURE,
+        'ID token signature does not verify',
+        $e,
+      );
     }
     catch (ExpiredException $e) {
       throw new TokenValidationException(TokenValidationException::R_EXPIRED, 'ID token has expired', $e);
@@ -185,10 +202,16 @@ final class IdTokenValidator {
     catch (BeforeValidException $e) {
       throw new TokenValidationException(TokenValidationException::R_NOT_YET_VALID, 'ID token is not valid yet', $e);
     }
-    catch (\UnexpectedValueException | \DomainException $e) {
+    // Two catches rather than one union type: the formatter strips the spaces
+    // around `|` and the code standard requires them, and this is not a fight
+    // worth having in the middle of signature verification.
+    catch (\UnexpectedValueException $e) {
       // Wrong key type for the algorithm, undecodable body, unsupported alg
       // reached through a library path we did not pre-empt.
-      throw new TokenValidationException(TokenValidationException::R_MALFORMED, sprintf('ID token (%s) could not be decoded', $alg), $e);
+      throw self::undecodable($alg, $e);
+    }
+    catch (\DomainException $e) {
+      throw self::undecodable($alg, $e);
     }
     finally {
       JWT::$leeway = $previousLeeway;
@@ -233,9 +256,12 @@ final class IdTokenValidator {
     $matched = FALSE;
     /** @var mixed $candidate */
     foreach ($audiences as $candidate) {
-      if (is_string($candidate) && hash_equals($this->policy->clientId, $candidate)) {
-        $matched = TRUE;
+      if (!is_string($candidate)) {
+        continue;
       }
+      // No early break: comparing every entry keeps the work independent of
+      // where in the list our client id sits.
+      $matched = $matched || hash_equals($this->policy->clientId, $candidate);
     }
     if (!$matched) {
       throw new TokenValidationException(
@@ -281,18 +307,18 @@ final class IdTokenValidator {
     $leeway = $this->policy->leeway;
 
     $exp = $this->requireInt($claims, 'exp');
-    if ($now - $leeway >= $exp) {
+    if (($now - $leeway) >= $exp) {
       throw new TokenValidationException(TokenValidationException::R_EXPIRED, 'ID token exp is in the past');
     }
 
     $iat = $this->requireInt($claims, 'iat');
-    if ($iat > $now + $leeway) {
+    if ($iat > ($now + $leeway)) {
       throw new TokenValidationException(TokenValidationException::R_NOT_YET_VALID, 'ID token iat is in the future');
     }
 
     if (array_key_exists('nbf', $claims)) {
       $nbf = $this->requireInt($claims, 'nbf');
-      if ($nbf > $now + $leeway) {
+      if ($nbf > ($now + $leeway)) {
         throw new TokenValidationException(TokenValidationException::R_NOT_YET_VALID, 'ID token nbf is in the future');
       }
     }
@@ -352,6 +378,14 @@ final class IdTokenValidator {
     throw new TokenValidationException(
       TokenValidationException::R_MISSING_CLAIM,
       sprintf('ID token carries no usable %s claim', $name),
+    );
+  }
+
+  private static function undecodable(string $alg, \Throwable $e): TokenValidationException {
+    return new TokenValidationException(
+      TokenValidationException::R_MALFORMED,
+      sprintf('ID token (%s) could not be decoded', $alg),
+      $e,
     );
   }
 

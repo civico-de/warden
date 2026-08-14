@@ -445,7 +445,14 @@ abstract class IdTokenValidatorContract extends TestCase {
     // Re-header the token to claim PS256 without re-signing: the alg check
     // runs before any key is touched, so the body never matters.
     [, $payload, $signature] = explode('.', $token);
-    $header = rtrim(strtr(base64_encode((string) json_encode(['alg' => 'PS256', 'typ' => 'JWT', 'kid' => JwtFixture::KID])), '+/', '-_'), '=');
+    $header = rtrim(
+      strtr(
+        base64_encode((string) json_encode(['alg' => 'PS256', 'typ' => 'JWT', 'kid' => JwtFixture::KID])),
+        '+/',
+        '-_',
+      ),
+      '=',
+    );
 
     $this->expectReason(
       TokenValidationException::R_ALG_UNSUPPORTED_BY_RUNTIME,

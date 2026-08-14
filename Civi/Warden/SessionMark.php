@@ -74,10 +74,14 @@ final class SessionMark {
     }
 
     $separator = str_contains($endpoint, '?') ? '&' : '?';
-    self::$pendingEndSession = $endpoint . $separator . http_build_query([
-      'client_id' => $provider->clientId,
-      'post_logout_redirect_uri' => rtrim((string) \CRM_Utils_Constant::value('CIVICRM_UF_BASEURL'), '/') . '/civicrm/login',
-    ]);
+    $postLogout = rtrim(Value::str(\CRM_Utils_Constant::value('CIVICRM_UF_BASEURL')), '/') . '/civicrm/login';
+    self::$pendingEndSession =
+      $endpoint
+      . $separator
+      . http_build_query([
+        'client_id' => $provider->clientId,
+        'post_logout_redirect_uri' => $postLogout,
+      ]);
 
     Audit::record(Options::EVENT_LOGOUT, $provider);
   }

@@ -37,10 +37,8 @@ final class Cache {
     /** @var array{ok: bool, value?: mixed, error?: string}|null $entry */
     $entry = $cache->get($key);
     if (is_array($entry) && ($entry['ok'] ?? FALSE) === TRUE && array_key_exists('value', $entry)) {
-      /** @var T $value */
-      $value = $entry['value'];
-
-      return $value;
+      /** @var T */
+      return $entry['value'];
     }
     if (is_array($entry) && ($entry['ok'] ?? TRUE) === FALSE) {
       throw new \CRM_Core_Exception(sprintf(

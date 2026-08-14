@@ -5,8 +5,10 @@ declare(strict_types = 1);
 namespace Civi\Warden;
 
 use Firebase\JWT\JWK;
-use Firebase\JWT\Key;
 
+// @mago-expect lint:cyclomatic-complexity
+// Key-set parsing is defensive by necessity: one unusable key must not take
+// the others down with it.
 /**
  * The provider's public keys, fetched from `jwks_uri` and cached.
  *
@@ -21,7 +23,7 @@ final class JwksKeySource implements KeySource {
    * Within one request the key set is fetched at most once per force level, so
    * the validator's single retry cannot become a fetch per token.
    *
-   * @var array<string, Key>|null
+   * @var array<string, \Firebase\JWT\Key>|null
    */
   private ?array $memo = NULL;
 
@@ -33,8 +35,10 @@ final class JwksKeySource implements KeySource {
   ) {}
 
   /**
-   * @return array<string, Key>
+   * @return array<string, \Firebase\JWT\Key>
    */
+  // @mago-expect lint:no-boolean-flag-parameter
+  // Implements KeySource; the signature is not ours to change here.
   public function keys(bool $forceRefresh = FALSE): array {
     if ($forceRefresh && !$this->refreshedThisRequest) {
       $this->refreshedThisRequest = TRUE;
@@ -60,7 +64,7 @@ final class JwksKeySource implements KeySource {
   /**
    * @param array<string, mixed> $raw
    *
-   * @return array<string, Key>
+   * @return array<string, \Firebase\JWT\Key>
    *
    * @throws \CRM_Core_Exception
    */
@@ -86,7 +90,7 @@ final class JwksKeySource implements KeySource {
           continue;
         }
         try {
-          /** @var array<string, Key> $parsed */
+          /** @var array<string, \Firebase\JWT\Key> $parsed */
           $parsed = JWK::parseKeySet(['keys' => [$jwk]]);
           $keys += $parsed;
         }
@@ -98,7 +102,7 @@ final class JwksKeySource implements KeySource {
       }
     }
     catch (\Throwable $e) {
-      throw new \CRM_Core_Exception('warden could not parse the provider key set: ' . $e->getMessage(), 0, $e);
+      throw new \CRM_Core_Exception('warden could not parse the provider key set: ' . $e->getMessage(), 0, [], $e);
     }
 
     if ($keys === []) {

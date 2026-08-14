@@ -10,6 +10,7 @@ use Civi\Warden\LandingUrl;
 use Civi\Warden\LoginFlow;
 use Civi\Warden\Options;
 use Civi\Warden\ProviderRepository;
+use Civi\Warden\Value;
 
 /**
  * `civicrm/warden/login` — start an authorization-code flow.
@@ -27,8 +28,8 @@ final class LoginPage {
       self::fail('Single sign-on is switched off on this site.');
     }
 
-    $providerId = \CRM_Utils_Request::retrieveValue('provider', 'Positive', NULL, FALSE, 'GET');
-    $provider = is_numeric($providerId) ? ProviderRepository::find((int) $providerId) : NULL;
+    $providerId = Value::nullableInt(\CRM_Utils_Request::retrieveValue('provider', 'Positive', NULL, FALSE, 'GET'));
+    $provider = $providerId === NULL ? NULL : ProviderRepository::find($providerId);
 
     if ($provider === NULL) {
       // No id, or an id that does not exist: fall back to the only provider
@@ -42,21 +43,29 @@ final class LoginPage {
       self::fail('This login option is not available.');
     }
 
+    $landing = Value::nullableStr(\CRM_Utils_Request::retrieveValue('land', 'String', NULL, FALSE, 'GET'));
+
     // Already signed in: nothing to do, and starting a flow would only make a
     // second session.
     if (\CRM_Core_Session::getLoggedInContactID()) {
-      \CRM_Utils_System::redirect(LandingUrl::absolute(\CRM_Utils_Request::retrieveValue('land', 'String', NULL, FALSE, 'GET')));
+      \CRM_Utils_System::redirect(LandingUrl::absolute($landing));
     }
 
     try {
-      $url = LoginFlow::create()->begin(
-        $provider,
-        \CRM_Utils_Request::retrieveValue('land', 'String', NULL, FALSE, 'GET'),
-      );
+      $url = LoginFlow::create()->begin($provider, $landing);
     }
     catch (\Throwable $e) {
-      \Civi::log()->error('warden: could not start a login with {p}: {msg}', ['p' => $provider->name, 'msg' => $e->getMessage()]);
-      Audit::record(Options::EVENT_LOGIN_FAILURE, $provider, NULL, 'discovery_failed', 'could not build an authorization request');
+      \Civi::log()->error('warden: could not start a login with {p}: {msg}', [
+        'p' => $provider->name,
+        'msg' => $e->getMessage(),
+      ]);
+      Audit::record(
+        Options::EVENT_LOGIN_FAILURE,
+        $provider,
+        NULL,
+        'discovery_failed',
+        'could not build an authorization request',
+      );
       self::fail('This identity provider is not reachable right now. Please try again shortly.');
     }
 
@@ -68,10 +77,12 @@ final class LoginPage {
    */
   private static function fail(string $message): never {
     \CRM_Core_Session::setStatus($message, 'Sign-in', 'error');
-    \CRM_Utils_System::redirect(rtrim((string) \CRM_Utils_Constant::value('CIVICRM_UF_BASEURL'), '/') . '/civicrm/login');
+    \CRM_Utils_System::redirect(
+      rtrim(Value::str(\CRM_Utils_Constant::value('CIVICRM_UF_BASEURL')), '/') . '/civicrm/login',
+    );
     // CRM_Utils_System::redirect() exits, but never rely on that for control
     // flow — a test double or a CLI context would fall through.
-    exit;
+    exit();
   }
 
 }

@@ -16,6 +16,10 @@ final class DiscoveryDocument {
    *   `id_token_signing_alg_values_supported`. Empty when the provider does not
    *   advertise it, which is legal but unhelpful.
    */
+  // @mago-expect lint:excessive-parameter-list
+  // A value object mirroring the discovery document's fields. Fewer parameters
+  // would mean either losing readonly promotion or inventing sub-objects that
+  // exist only to satisfy a count.
   private function __construct(
     public readonly string $issuer,
     public readonly string $authorizationEndpoint,
@@ -76,9 +80,10 @@ final class DiscoveryDocument {
     $out = [];
     /** @var mixed $item */
     foreach ($value as $item) {
-      if (is_string($item) && $item !== '') {
-        $out[] = $item;
+      if (!is_string($item) || $item === '') {
+        continue;
       }
+      $out[] = $item;
     }
 
     return array_values(array_unique($out));

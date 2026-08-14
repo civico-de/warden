@@ -22,6 +22,16 @@ namespace Civi\Warden;
  */
 final class Secret {
 
+  private static function registry(): \Civi\Crypto\CryptoRegistry {
+    /** @var \Civi\Crypto\CryptoRegistry */
+    return \Civi::service('crypto.registry');
+  }
+
+  private static function token(): \Civi\Crypto\CryptoToken {
+    /** @var \Civi\Crypto\CryptoToken */
+    return \Civi::service('crypto.token');
+  }
+
   /**
    * Is a real CRED key configured?
    *
@@ -30,14 +40,13 @@ final class Secret {
    */
   public static function keyAvailable(): bool {
     try {
-      /** @var array<string, mixed> $key */
-      $key = \Civi::service('crypto.registry')->findKey('CRED');
+      $key = self::registry()->findKey('CRED');
     }
     catch (\Throwable) {
       return FALSE;
     }
 
-    return ($key['suite'] ?? 'plain') !== 'plain';
+    return Value::str($key['suite'] ?? NULL, 'plain') !== 'plain';
   }
 
   /**
@@ -62,7 +71,7 @@ final class Secret {
       );
     }
 
-    return \Civi::service('crypto.token')->encrypt($plaintext, 'CRED');
+    return Value::str(self::token()->encrypt($plaintext, 'CRED'));
   }
 
   /**
@@ -78,7 +87,7 @@ final class Secret {
     }
 
     try {
-      return (string) \Civi::service('crypto.token')->decrypt($stored, ['CRED', 'plain']);
+      return Value::str(self::token()->decrypt($stored, ['CRED', 'plain']));
     }
     catch (\Throwable) {
       return '';
@@ -101,7 +110,7 @@ final class Secret {
     // untouched — no wrapper, no marker — so the only way to tell ciphertext
     // from a bare secret is the delimiter test the class exposes itself.
     try {
-      return !\Civi::service('crypto.token')->isPlainText($stored);
+      return !self::token()->isPlainText($stored);
     }
     catch (\Throwable) {
       return FALSE;

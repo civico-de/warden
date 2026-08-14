@@ -7,8 +7,8 @@ namespace Civi\Warden\Subscriber;
 use Civi\Core\Service\AutoSubscriber;
 use Civi\Warden\Escape;
 use Civi\Warden\Options;
-use Civi\Warden\Provider;
 use Civi\Warden\ProviderRepository;
+use CRM_Warden_ExtensionUtil as E;
 
 /**
  * The sign-in buttons on Standalone's login screen.
@@ -65,7 +65,7 @@ final class LoginScreenSubscriber extends AutoSubscriber {
   }
 
   /**
-   * @param list<Provider> $providers
+   * @param list<\Civi\Warden\Provider> $providers
    */
   private static function markup(array $providers): string {
     $required = FALSE;
@@ -79,7 +79,7 @@ final class LoginScreenSubscriber extends AutoSubscriber {
         htmlspecialchars(
           // The label is operator-supplied, so it is escaped like any other
           // untrusted string even though an operator is not an attacker.
-          ts('Sign in with %1', [1 => $provider->label]),
+          E::ts('Sign in with %1', [1 => $provider->label]),
           ENT_QUOTES,
           'UTF-8',
         ),
@@ -87,14 +87,20 @@ final class LoginScreenSubscriber extends AutoSubscriber {
     }
 
     $note = $required
-      ? '<p class="warden-login-note">' . htmlspecialchars(ts('This site requires single sign-on. Password sign-in is disabled.'), ENT_QUOTES, 'UTF-8') . '</p>'
+      ? '<p class="warden-login-note">'
+      . htmlspecialchars(E::ts('This site requires single sign-on. Password sign-in is disabled.'), ENT_QUOTES, 'UTF-8')
+      . '</p>'
       : '';
 
-    return '<div class="warden-login-options crm-section">'
-      . '<h3>' . htmlspecialchars(ts('Single sign-on'), ENT_QUOTES, 'UTF-8') . '</h3>'
+    return (
+      '<div class="warden-login-options crm-section">'
+      . '<h3>'
+      . htmlspecialchars(E::ts('Single sign-on'), ENT_QUOTES, 'UTF-8')
+      . '</h3>'
       . $note
       . $buttons
-      . '</div>';
+      . '</div>'
+    );
   }
 
 }

@@ -1,15 +1,13 @@
 <?php
+
 declare(strict_types = 1);
-use CRM_Warden_ExtensionUtil as E;
 
 /**
  * Collection of upgrade steps.
  */
 final class CRM_Warden_Upgrader extends \CRM_Extension_Upgrader_Base {
-
   // By convention, functions that look like "function upgrade_NNNN()" are
   // upgrade tasks. They are executed in order (like Drupal's hook_update_N).
-
   /**
    * Example: Run an external SQL script when the module is installed.
    *
@@ -18,7 +16,6 @@ final class CRM_Warden_Upgrader extends \CRM_Extension_Upgrader_Base {
   // public function install(): void {
   //   $this->executeSqlFile('sql/my_install.sql');
   // }
-
   /**
    * Example: Work with entities usually not available during the install step.
    *
@@ -36,7 +33,6 @@ final class CRM_Warden_Upgrader extends \CRM_Extension_Upgrader_Base {
   //    'myWeirdFieldSetting' => array('id' => $customFieldId, 'weirdness' => 1),
   //  ));
   // }
-
   /**
    * Example: Run an external SQL script when the module is uninstalled.
    *
@@ -45,21 +41,18 @@ final class CRM_Warden_Upgrader extends \CRM_Extension_Upgrader_Base {
   // public function uninstall(): void {
   //   $this->executeSqlFile('sql/my_uninstall.sql');
   // }
-
   /**
    * Example: Run a simple query when a module is enabled.
    */
   // public function enable(): void {
   //  CRM_Core_DAO::executeQuery('UPDATE foo SET is_active = 1 WHERE bar = "whiz"');
   // }
-
   /**
    * Example: Run a simple query when a module is disabled.
    */
   // public function disable(): void {
   //   CRM_Core_DAO::executeQuery('UPDATE foo SET is_active = 0 WHERE bar = "whiz"');
   // }
-
   /**
    * Example: Run a couple simple queries.
    *
@@ -72,7 +65,6 @@ final class CRM_Warden_Upgrader extends \CRM_Extension_Upgrader_Base {
   //   CRM_Core_DAO::executeQuery('DELETE FROM bang WHERE willy = wonka(2)');
   //   return TRUE;
   // }
-
   /**
    * Example: Run an external SQL script.
    *
@@ -85,7 +77,6 @@ final class CRM_Warden_Upgrader extends \CRM_Extension_Upgrader_Base {
   //   $this->executeSqlFile('sql/upgrade_4201.sql');
   //   return TRUE;
   // }
-
   /**
    * Example: Run a slow upgrade process by breaking it up into smaller chunk.
    *
@@ -94,7 +85,6 @@ final class CRM_Warden_Upgrader extends \CRM_Extension_Upgrader_Base {
    */
   // public function upgrade_4202(): bool {
   //   $this->ctx->log->info('Planning update 4202'); // PEAR Log interface
-
   //   $this->addTask(E::ts('Process first step'), 'processPart1', $arg1, $arg2);
   //   $this->addTask(E::ts('Process second step'), 'processPart2', $arg3, $arg4);
   //   $this->addTask(E::ts('Process second step'), 'processPart3', $arg5);
@@ -103,7 +93,6 @@ final class CRM_Warden_Upgrader extends \CRM_Extension_Upgrader_Base {
   // public function processPart1($arg1, $arg2) { sleep(10); return TRUE; }
   // public function processPart2($arg3, $arg4) { sleep(10); return TRUE; }
   // public function processPart3($arg5) { sleep(10); return TRUE; }
-
   /**
    * Example: Run an upgrade with a query that touches many (potentially
    * millions) of records by breaking it up into smaller chunks.
@@ -113,7 +102,6 @@ final class CRM_Warden_Upgrader extends \CRM_Extension_Upgrader_Base {
    */
   // public function upgrade_4203(): bool {
   //   $this->ctx->log->info('Planning update 4203'); // PEAR Log interface
-
   //   $minId = CRM_Core_DAO::singleValueQuery('SELECT coalesce(min(id),0) FROM civicrm_contribution');
   //   $maxId = CRM_Core_DAO::singleValueQuery('SELECT coalesce(max(id),0) FROM civicrm_contribution');
   //   for ($startId = $minId; $startId <= $maxId; $startId += self::BATCH_SIZE) {
@@ -134,5 +122,4 @@ final class CRM_Warden_Upgrader extends \CRM_Extension_Upgrader_Base {
   //   }
   //   return TRUE;
   // }
-
 }

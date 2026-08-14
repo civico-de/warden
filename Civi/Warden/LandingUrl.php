@@ -65,7 +65,7 @@ final class LandingUrl {
    * the redirect_uri is — see RedirectUri.
    */
   public static function absolute(?string $candidate): string {
-    $base = rtrim((string) \CRM_Utils_Constant::value('CIVICRM_UF_BASEURL'), '/');
+    $base = rtrim(Value::str(\CRM_Utils_Constant::value('CIVICRM_UF_BASEURL')), '/');
 
     return $base . self::sanitise($candidate);
   }

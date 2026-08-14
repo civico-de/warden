@@ -8,6 +8,7 @@ use Civi\Core\Event\GenericHookEvent;
 use Civi\Core\Service\AutoSubscriber;
 use Civi\Warden\Escape;
 use Civi\Warden\SessionMark;
+use Civi\Warden\Value;
 
 /**
  * RP-initiated logout.
@@ -75,7 +76,7 @@ final class LogoutSubscriber extends AutoSubscriber {
 
     // Only swap the redirect core makes right after a logout. Any other
     // redirect in the same request keeps its destination.
-    if (!str_contains((string) $uri->getPath(), 'civicrm/login')) {
+    if (!str_contains(Value::str($uri->getPath()), 'civicrm/login')) {
       return;
     }
 
