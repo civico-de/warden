@@ -82,7 +82,9 @@ final class DiscoveryHeadlessTest extends TestCase implements HeadlessInterface,
       ->execute()
       ->single();
 
-    $provider = ProviderRepository::find((int) $row['id']);
+    self::assertIsArray($row);
+    self::assertIsInt($row['id'] ?? NULL);
+    $provider = ProviderRepository::find($row['id']);
     self::assertNotNull($provider);
     Cache::forget(Discovery::cacheKey($provider));
 
@@ -117,6 +119,7 @@ final class DiscoveryHeadlessTest extends TestCase implements HeadlessInterface,
   public function testADocumentMissingARequiredEndpointIsRefused(): void {
     $provider = $this->provider();
     $body = json_decode($this->discoveryBody(), TRUE);
+    self::assertIsArray($body);
     unset($body['jwks_uri']);
     $this->stubHttp([new Response(200, [], (string) json_encode($body))]);
 
@@ -141,7 +144,7 @@ final class DiscoveryHeadlessTest extends TestCase implements HeadlessInterface,
     $second = Discovery::forProvider($provider);
 
     self::assertSame(self::ISSUER, $second->issuer);
-    self::assertSame(0, $mock->count(), 'the queue should be spent exactly once');
+    self::assertCount(0, $mock, 'the queue should be spent exactly once');
   }
 
   /**
@@ -183,6 +186,7 @@ final class DiscoveryHeadlessTest extends TestCase implements HeadlessInterface,
 
   public function testEncryptionKeysAreIgnored(): void {
     $raw = $this->jwks();
+    self::assertIsArray($raw['keys'][0]);
     $raw['keys'][0]['use'] = 'enc';
 
     $this->expectException(\CRM_Core_Exception::class);
@@ -192,6 +196,7 @@ final class DiscoveryHeadlessTest extends TestCase implements HeadlessInterface,
 
   public function testOneUnusableKeyDoesNotDisableTheOthers(): void {
     $raw = $this->jwks();
+    self::assertIsArray($raw['keys']);
     // A key warden's php-jwt cannot represent, alongside a good one.
     array_unshift($raw['keys'], [
       'kty' => 'EC',
@@ -210,6 +215,7 @@ final class DiscoveryHeadlessTest extends TestCase implements HeadlessInterface,
 
   public function testKeysWithoutAKidAreSkipped(): void {
     $raw = $this->jwks();
+    self::assertIsArray($raw['keys'][0]);
     unset($raw['keys'][0]['kid']);
 
     $this->expectException(\CRM_Core_Exception::class);
@@ -231,13 +237,16 @@ final class DiscoveryHeadlessTest extends TestCase implements HeadlessInterface,
   }
 
   /**
-   * @return array<string, mixed>
+   * @return array{keys: list<array<string, string>>}
    */
   private function jwks(): array {
     $key = openssl_pkey_get_public(JwtFixture::keyPair('a')['public']);
     self::assertNotFalse($key);
     $details = openssl_pkey_get_details($key);
     self::assertIsArray($details);
+    self::assertIsArray($details['rsa'] ?? NULL);
+    self::assertIsString($details['rsa']['n'] ?? NULL);
+    self::assertIsString($details['rsa']['e'] ?? NULL);
 
     return [
       'keys' => [
@@ -246,8 +255,8 @@ final class DiscoveryHeadlessTest extends TestCase implements HeadlessInterface,
           'kid' => 'rsa-1',
           'use' => 'sig',
           'alg' => 'RS256',
-          'n' => rtrim(strtr(base64_encode((string) $details['rsa']['n']), '+/', '-_'), '='),
-          'e' => rtrim(strtr(base64_encode((string) $details['rsa']['e']), '+/', '-_'), '='),
+          'n' => rtrim(strtr(base64_encode($details['rsa']['n']), '+/', '-_'), '='),
+          'e' => rtrim(strtr(base64_encode($details['rsa']['e']), '+/', '-_'), '='),
         ],
       ],
     ];

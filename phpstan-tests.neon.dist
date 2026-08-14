@@ -1,16 +1,11 @@
-# OPT-IN: static analysis of the test suite.
+# Static analysis of the test suite — part of the standard CI contract.
 #
-# The main phpstan.neon.dist analyses production code only. Test code is
-# where the fleet's remaining level-10 debt sits, so making `tests/` part of
-# the default run would have turned green repos red on the day it shipped.
-# The existence of THIS file is the switch: CI runs it as a second, separate
-# phpstan pass when it is here, and does nothing when it is not. There is no
-# other flag to set.
+# The main phpstan.neon.dist analyses production code only. This second pass
+# keeps test helpers and assertions at the same level instead of allowing a
+# weakly typed test layer to hide defects in otherwise strict production code.
 #
-# Adopt it per repo, once `phpstan analyse -c phpstan-tests.neon.dist` is
-# clean. Measure first — a repo with a three-digit count should fix the test
-# code rather than commit this file with a baseline; a baseline here would
-# recreate exactly the blind spot the file exists to remove.
+# Do not add a baseline. Existing findings are work to fix, not a reason to
+# remove this configuration or make the gate optional.
 #
 # What it buys beyond level 10 on test code: the test-only rules in
 # civikitchen/phpstan-ck-legacy only ever see a file that is analysed, and
@@ -22,13 +17,21 @@ includes:
 
 parameters:
 	# Level 10 here too. Test code that cannot carry the same level is test
-	# code that will not catch the bug it was written for; the honest lever
-	# is not adopting this file yet, not analysing it at a lower level.
+	# code that may not catch the bug it was written for.
 	level: 10
 	# `!` overrides the included list instead of appending to it — this is a
 	# second pass over the tests, not a re-run of the production analysis.
 	paths!:
 		- tests/phpunit
+	# The second pass replaces production `paths`; scan extension classes so
+	# APIv4 façades loaded by CiviCRM's runtime classloader remain known while
+	# only tests themselves are analysed for findings.
+	scanDirectories:
+		- Civi
+		- CRM
+		- tests/support
+	scanFiles:
+		- warden.php
 	# PHPUnit's own classes come from core's dev dependencies. A packaged
 	# install may not have them; point phpstan at wherever they are, e.g.:
 	#	scanDirectories:

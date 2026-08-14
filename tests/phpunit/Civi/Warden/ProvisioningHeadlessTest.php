@@ -37,6 +37,9 @@ final class ProvisioningHeadlessTest extends TestCase implements HeadlessInterfa
       ->apply();
   }
 
+  /**
+   * @param array<string, mixed> $overrides
+   */
   private function provider(array $overrides = []): Provider {
     $created = WardenProvider::create(FALSE)
       ->setValues(array_merge([
@@ -55,7 +58,9 @@ final class ProvisioningHeadlessTest extends TestCase implements HeadlessInterfa
       ->execute()
       ->single();
 
-    $provider = ProviderRepository::find((int) $created['id']);
+    self::assertIsArray($created);
+    self::assertIsInt($created['id'] ?? NULL);
+    $provider = ProviderRepository::find($created['id']);
     self::assertNotNull($provider);
 
     return $provider;
@@ -67,7 +72,8 @@ final class ProvisioningHeadlessTest extends TestCase implements HeadlessInterfa
   private function claims(array $overrides = []): IdTokenClaims {
     $all = array_merge(JwtFixture::claims(time(), 'nonce'), $overrides);
 
-    return new IdTokenClaims((string) $all['sub'], $all);
+    self::assertIsString($all['sub'] ?? NULL);
+    return new IdTokenClaims($all['sub'], $all);
   }
 
   public function testFirstLoginProvisionsAUserAndLinksTheSubject(): void {
@@ -82,7 +88,9 @@ final class ProvisioningHeadlessTest extends TestCase implements HeadlessInterfa
       ->addWhere('subject', '=', 'subject-A')
       ->execute()
       ->single();
-    self::assertSame($userId, (int) $identity['user_id']);
+    self::assertIsArray($identity);
+    self::assertIsInt($identity['user_id'] ?? NULL);
+    self::assertSame($userId, $identity['user_id']);
 
     $user = User::get(FALSE)->addWhere('id', '=', $userId)->addSelect('contact_id', 'is_active')->execute()->single();
     self::assertNotEmpty($user['contact_id'], 'a provisioned user must have a contact');
@@ -124,7 +132,9 @@ final class ProvisioningHeadlessTest extends TestCase implements HeadlessInterfa
     Provisioner::resolve($provider, $this->claims(['sub' => 'subject-C']));
 
     $identity = WardenIdentity::get(FALSE)->addWhere('subject', '=', 'subject-C')->execute()->single();
-    self::assertSame(2, (int) $identity['login_count']);
+    self::assertIsArray($identity);
+    self::assertIsInt($identity['login_count'] ?? NULL);
+    self::assertSame(2, $identity['login_count']);
   }
 
   public function testAnUnknownSubjectIsRefusedWhenProvisioningIsOff(): void {
@@ -327,7 +337,9 @@ final class ProvisioningHeadlessTest extends TestCase implements HeadlessInterfa
       ->execute()
       ->single();
 
-    return (int) $user['id'];
+    self::assertIsArray($user);
+    self::assertIsInt($user['id'] ?? NULL);
+    return $user['id'];
   }
 
   /**

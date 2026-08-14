@@ -55,6 +55,7 @@ final class RoutesHeadlessTest extends TestCase implements HeadlessInterface, Tr
     $captured = NULL;
     $listener = static function ($event) use (&$captured): void {
       if ($captured === NULL) {
+        /** @var object{url: \Psr\Http\Message\UriInterface} $event */
         $captured = \CRM_Utils_Url::unparseUrl($event->url);
       }
       throw new RedirectCaptured();
@@ -99,6 +100,9 @@ final class RoutesHeadlessTest extends TestCase implements HeadlessInterface, Tr
     );
   }
 
+  /**
+   * @param array<string, mixed> $overrides
+   */
   private function provider(array $overrides = []): Provider {
     $row = WardenProvider::create(FALSE)
       ->setValues(array_merge([
@@ -114,7 +118,9 @@ final class RoutesHeadlessTest extends TestCase implements HeadlessInterface, Tr
       ->execute()
       ->single();
 
-    $provider = ProviderRepository::find((int) $row['id']);
+    self::assertIsArray($row);
+    self::assertIsInt($row['id'] ?? NULL);
+    $provider = ProviderRepository::find($row['id']);
     self::assertNotNull($provider);
     Cache::forget(Discovery::cacheKey($provider));
 

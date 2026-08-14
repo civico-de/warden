@@ -47,7 +47,9 @@ final class ModeEnforcementHeadlessTest extends TestCase implements HeadlessInte
       ->execute()
       ->single();
 
-    $this->adminUserId = $this->makeUser('admin@example.org', [(int) $adminRole['id']]);
+    self::assertIsArray($adminRole);
+    self::assertIsInt($adminRole['id'] ?? NULL);
+    $this->adminUserId = $this->makeUser('admin@example.org', [$adminRole['id']]);
     $this->plainUserId = $this->makeUser('plain@example.org', []);
 
     \Civi::settings()->set('warden_enabled', TRUE);
@@ -126,7 +128,7 @@ final class ModeEnforcementHeadlessTest extends TestCase implements HeadlessInte
 
     PasswordLoginSubscriber::onCheckPassword($event);
 
-    self::assertFalse($success, 'the hash comparison must be refused outright');
+    self::assertFalse(self::mixedValue($success), 'the hash comparison must be refused outright');
   }
 
   public function testTheCheckPasswordBackstopIsInertWithoutRequiredMode(): void {
@@ -139,7 +141,7 @@ final class ModeEnforcementHeadlessTest extends TestCase implements HeadlessInte
 
     PasswordLoginSubscriber::onCheckPassword($event);
 
-    self::assertNull($success, 'warden must leave the decision to core when it has no opinion');
+    self::assertNull(self::mixedValue($success), 'warden must leave the decision to core when it has no opinion');
   }
 
   // --- The administrator escape hatch -----------------------------------
@@ -298,6 +300,7 @@ final class ModeEnforcementHeadlessTest extends TestCase implements HeadlessInte
     );
 
     $markup = \CRM_Core_Region::instance('page-body')->render('', FALSE);
+    self::assertIsString($markup);
 
     self::assertStringContainsString(
       'warden-login-options',
@@ -329,7 +332,9 @@ final class ModeEnforcementHeadlessTest extends TestCase implements HeadlessInte
       \Civi\Core\Event\GenericHookEvent::createOrdered(['page'], [&$page]),
     );
 
-    self::assertStringNotContainsString('Hidden IdP', \CRM_Core_Region::instance('page-body')->render('', FALSE));
+    $markup = \CRM_Core_Region::instance('page-body')->render('', FALSE);
+    self::assertIsString($markup);
+    self::assertStringNotContainsString('Hidden IdP', $markup);
   }
 
   /**
@@ -354,7 +359,10 @@ final class ModeEnforcementHeadlessTest extends TestCase implements HeadlessInte
       $create->addValue('roles', $roleIds);
     }
 
-    return (int) $create->execute()->single()['id'];
+    $user = $create->execute()->single();
+    self::assertIsArray($user);
+    self::assertIsInt($user['id'] ?? NULL);
+    return $user['id'];
   }
 
   /**
@@ -364,6 +372,10 @@ final class ModeEnforcementHeadlessTest extends TestCase implements HeadlessInte
    */
   private static function throwawayCredential(): string {
     return 'unused-' . bin2hex(random_bytes(12));
+  }
+
+  private static function mixedValue(mixed $value): mixed {
+    return $value;
   }
 
 }

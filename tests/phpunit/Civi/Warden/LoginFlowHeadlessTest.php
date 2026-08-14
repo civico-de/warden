@@ -92,6 +92,9 @@ final class LoginFlowHeadlessTest extends TestCase implements HeadlessInterface,
     self::assertNotFalse($key);
     $details = openssl_pkey_get_details($key);
     self::assertIsArray($details);
+    self::assertIsArray($details['rsa'] ?? NULL);
+    self::assertIsString($details['rsa']['n'] ?? NULL);
+    self::assertIsString($details['rsa']['e'] ?? NULL);
 
     return new Response(
       200,
@@ -103,8 +106,8 @@ final class LoginFlowHeadlessTest extends TestCase implements HeadlessInterface,
             'kid' => JwtFixture::KID,
             'use' => 'sig',
             'alg' => 'RS256',
-            'n' => rtrim(strtr(base64_encode((string) $details['rsa']['n']), '+/', '-_'), '='),
-            'e' => rtrim(strtr(base64_encode((string) $details['rsa']['e']), '+/', '-_'), '='),
+            'n' => rtrim(strtr(base64_encode($details['rsa']['n']), '+/', '-_'), '='),
+            'e' => rtrim(strtr(base64_encode($details['rsa']['e']), '+/', '-_'), '='),
           ],
         ],
       ]),
@@ -129,6 +132,9 @@ final class LoginFlowHeadlessTest extends TestCase implements HeadlessInterface,
     );
   }
 
+  /**
+   * @param array<string, mixed> $overrides
+   */
   private function provider(array $overrides = []): Provider {
     $row = WardenProvider::create(FALSE)
       ->setValues(array_merge([
@@ -145,7 +151,9 @@ final class LoginFlowHeadlessTest extends TestCase implements HeadlessInterface,
       ->execute()
       ->single();
 
-    $provider = ProviderRepository::find((int) $row['id']);
+    self::assertIsArray($row);
+    self::assertIsInt($row['id'] ?? NULL);
+    $provider = ProviderRepository::find($row['id']);
     self::assertNotNull($provider);
     Cache::forget(Discovery::cacheKey($provider));
 
@@ -153,6 +161,8 @@ final class LoginFlowHeadlessTest extends TestCase implements HeadlessInterface,
   }
 
   /**
+   * @param array<string, mixed> $providerOverrides
+   *
    * @return array{0: Provider, 1: string, 2: string}
    *   Provider, state, nonce.
    */
@@ -186,7 +196,8 @@ final class LoginFlowHeadlessTest extends TestCase implements HeadlessInterface,
     self::assertNotEmpty($q['code_challenge'] ?? NULL);
     self::assertNotEmpty($q['nonce'] ?? NULL, 'without a nonce the ID token can be replayed');
     self::assertNotEmpty($q['state'] ?? NULL);
-    self::assertStringContainsString('openid', (string) ($q['scope'] ?? ''));
+    self::assertIsString($q['scope'] ?? NULL);
+    self::assertStringContainsString('openid', $q['scope']);
   }
 
   public function testTheChallengeIsTheHashOfTheStoredVerifier(): void {
@@ -194,6 +205,7 @@ final class LoginFlowHeadlessTest extends TestCase implements HeadlessInterface,
 
     $entry = $this->storage->states[$state] ?? NULL;
     self::assertIsArray($entry);
+    self::assertIsArray($entry['payload'] ?? NULL);
     $verifier = $entry['payload']['code_verifier'] ?? NULL;
     self::assertIsString($verifier);
 
@@ -207,9 +219,11 @@ final class LoginFlowHeadlessTest extends TestCase implements HeadlessInterface,
 
     $url = $this->flow()->begin($provider, 'https://evil.example.org/');
     parse_str((string) parse_url($url, PHP_URL_QUERY), $q);
-    $entry = $this->storage->states[(string) $q['state']] ?? NULL;
+    self::assertIsString($q['state'] ?? NULL);
+    $entry = $this->storage->states[$q['state']] ?? NULL;
 
     self::assertIsArray($entry);
+    self::assertIsArray($entry['payload'] ?? NULL);
     self::assertSame(LandingUrl::DEFAULT_PATH, $entry['payload']['landing'] ?? NULL);
   }
 

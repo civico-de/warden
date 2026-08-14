@@ -34,6 +34,9 @@ final class SessionAndSecretHeadlessTest extends TestCase implements HeadlessInt
       ->apply();
   }
 
+  /**
+   * @param array<string, mixed> $overrides
+   */
   private function provider(array $overrides = []): Provider {
     $created = WardenProvider::create(FALSE)
       ->setValues(array_merge([
@@ -49,7 +52,9 @@ final class SessionAndSecretHeadlessTest extends TestCase implements HeadlessInt
       ->execute()
       ->single();
 
-    $provider = ProviderRepository::find((int) $created['id']);
+    self::assertIsArray($created);
+    self::assertIsInt($created['id'] ?? NULL);
+    $provider = ProviderRepository::find($created['id']);
     self::assertNotNull($provider);
 
     return $provider;
@@ -393,14 +398,17 @@ final class SessionAndSecretHeadlessTest extends TestCase implements HeadlessInt
       ->execute()
       ->single();
 
-    return (int) User::create(FALSE)
+    $user = User::create(FALSE)
       ->addValue('contact_id', $contact['id'])
       ->addValue('username', $email)
       ->addValue('uf_name', $email)
       ->addValue('password', self::throwawayCredential())
       ->addValue('is_active', TRUE)
       ->execute()
-      ->single()['id'];
+      ->single();
+    self::assertIsArray($user);
+    self::assertIsInt($user['id'] ?? NULL);
+    return $user['id'];
   }
 
   /**

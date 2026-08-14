@@ -46,6 +46,9 @@ final class StatusCheckHeadlessTest extends TestCase implements HeadlessInterfac
     Http::setClient(new Client(['handler' => HandlerStack::create(new MockHandler($queue))]));
   }
 
+  /**
+   * @param array<string, mixed> $overrides
+   */
   private function discoveryResponse(array $overrides = []): Response {
     return new Response(
       200,
@@ -61,6 +64,9 @@ final class StatusCheckHeadlessTest extends TestCase implements HeadlessInterfac
     );
   }
 
+  /**
+   * @param array<string, mixed> $overrides
+   */
   private function provider(array $overrides = []): Provider {
     $row = WardenProvider::create(FALSE)
       ->setValues(array_merge([
@@ -76,7 +82,9 @@ final class StatusCheckHeadlessTest extends TestCase implements HeadlessInterfac
       ->execute()
       ->single();
 
-    $provider = ProviderRepository::find((int) $row['id']);
+    self::assertIsArray($row);
+    self::assertIsInt($row['id'] ?? NULL);
+    $provider = ProviderRepository::find($row['id']);
     self::assertNotNull($provider);
     Cache::forget(Discovery::cacheKey($provider));
 
@@ -197,10 +205,14 @@ final class StatusCheckHeadlessTest extends TestCase implements HeadlessInterfac
     warden_civicrm_heraldChecks($checks);
 
     self::assertArrayHasKey('warden.provider.' . $provider->name, $checks);
-    $result = $checks['warden.provider.' . $provider->name]();
+    $check = $checks['warden.provider.' . $provider->name];
+    self::assertIsCallable($check);
+    $result = $check();
+    self::assertIsArray($result);
 
     self::assertSame('fail', $result['status']);
-    self::assertStringContainsString('unreachable', (string) $result['detail']);
+    self::assertIsString($result['detail'] ?? NULL);
+    self::assertStringContainsString('unreachable', $result['detail']);
   }
 
   public function testHeraldConfigCheckIsOkOnAHealthySite(): void {
@@ -210,7 +222,11 @@ final class StatusCheckHeadlessTest extends TestCase implements HeadlessInterfac
     self::assertArrayHasKey('warden.config', $checks);
     // No providers configured and a dev base URL: the redirect_uri warning is
     // below the error threshold the herald check uses.
-    self::assertSame('ok', $checks['warden.config']()['status']);
+    $check = $checks['warden.config'];
+    self::assertIsCallable($check);
+    $result = $check();
+    self::assertIsArray($result);
+    self::assertSame('ok', $result['status'] ?? NULL);
   }
 
   public function testTheEscapeHatchSettingDisablesEverything(): void {
