@@ -28,5 +28,3 @@ jobs:
     uses: jfilter/civikitchen/.github/workflows/extension-ci.yml@v1
     with:
       key: warden
-      composer_install: true
-      lifecycle: true
