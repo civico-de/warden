@@ -26,14 +26,16 @@ final class LandingUrl {
    *   Untrusted input, typically the `land` query parameter.
    */
   public static function sanitise(?string $candidate): string {
-    $candidate = trim((string) $candidate);
+    $candidate = (string) $candidate;
     if ($candidate === '') {
       return self::DEFAULT_PATH;
     }
 
-    // Control characters and whitespace are how a payload is smuggled past a
-    // naive prefix check; a real path has none.
-    if (preg_match('/[\x00-\x1F\x7F\s]/', $candidate) === 1) {
+    // Control characters, spaces and DEL are how a payload is smuggled past a
+    // naive prefix check; a real path has none. Tested on the RAW string and
+    // before anything else, because trim() strips NUL — so trimming first
+    // would quietly erase exactly the byte this rejects.
+    if (preg_match('/[\x00-\x20\x7F]/', $candidate) === 1) {
       return self::DEFAULT_PATH;
     }
 

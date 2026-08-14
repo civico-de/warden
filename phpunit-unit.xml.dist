@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<!--
+  Pure unit tests: no CiviCRM bootstrap, no database. Runs anywhere a phpunit
+  binary exists. Use `phpunit.xml.dist` (cv-based) for the headless suite.
+-->
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" backupGlobals="false" colors="true" cacheResult="false" bootstrap="tests/unit/bootstrap.php" xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/9.3/phpunit.xsd">
+  <coverage>
+    <include>
+      <directory suffix=".php">./Civi/Warden</directory>
+    </include>
+  </coverage>
+  <testsuites>
+    <testsuite name="warden unit">
+      <directory>./tests/unit</directory>
+    </testsuite>
+  </testsuites>
+</phpunit>
