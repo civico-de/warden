@@ -17,6 +17,6 @@ min_coverage=70
 # classic function form is reserved for pre-boot/lifecycle/return-value hooks.
 hook_style=listener
 
-# Warden needs Composer dependencies before boot, lifecycle coverage and a
-# dedicated real-browser Keycloak job in addition to the shared CI caller.
-template_custom=.github/workflows/ci.yml -- Warden adds Composer, lifecycle and Keycloak E2E coverage
+# Warden enables shared Composer/lifecycle inputs and CiviKitchen's standalone
+# Playwright workflow for its provider-specific Keycloak topology.
+template_custom=.github/workflows/ci.yml -- Warden configures shared Composer, lifecycle and Keycloak E2E workflows

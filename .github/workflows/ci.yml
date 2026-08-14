@@ -33,17 +33,15 @@ jobs:
 
   keycloak-e2e:
     name: Keycloak browser E2E
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-        with:
-          persist-credentials: false
-
-      # The browser stack mounts this checkout and enables Warden during boot,
-      # so runtime and test dependencies must exist before Compose starts.
-      - name: Install Composer dependencies
-        run: composer install --no-interaction --no-progress
-
-      - name: Run real Keycloak login and back-channel logout
-        run: tests/e2e/keycloak/run.sh
+    uses: jfilter/civikitchen/.github/workflows/playwright-e2e.yml@v1
+    with:
+      working_directory: .
+      cache_dependency_path: tests/e2e/keycloak/package-lock.json
+      install_command: composer install --no-interaction --no-progress
+      test_command: tests/e2e/keycloak/run.sh
+      failure_command: docker compose -f .docker/docker-compose.keycloak.yml logs --no-color app keycloak
+      cleanup_command: docker compose -f .docker/docker-compose.keycloak.yml down --volumes --remove-orphans
+      artifact_paths: |-
+        tests/e2e/keycloak/playwright-report/
+        tests/e2e/keycloak/test-results/
+      timeout_minutes: 25
