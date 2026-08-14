@@ -46,7 +46,17 @@ return [
       'entity_reference' => [
         'entity' => 'User',
         'key' => 'id',
-        'on_delete' => 'CASCADE',
+        // No physical foreign key: `User` is standaloneusers' table, and the
+        // schema generator resolves references against warden's OWN entities
+        // when it builds in isolation (Civi\Test, a pre-boot install), where
+        // an unresolvable name is a fatal. The metadata stays so APIv4 joins
+        // and the EntityRef widget still work.
+        //
+        // The cascade it would have given us is done in code instead —
+        // UserCleanupSubscriber deletes these rows when a user is deleted.
+        // That is not cosmetic: an orphan row pointing at a recycled user id
+        // would log its subject in as whoever holds that id next.
+        'fk' => FALSE,
       ],
     ],
     'subject' => [

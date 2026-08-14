@@ -53,9 +53,12 @@ return [
       'entity_reference' => [
         'entity' => 'User',
         'key' => 'id',
-        'on_delete' => 'SET NULL',
+        // See WardenIdentity.user_id: no physical FK, because `User` belongs
+        // to standaloneusers and cannot be resolved when the schema is built
+        // in isolation. UserCleanupSubscriber clears these on user deletion.
+        'fk' => FALSE,
       ],
-      'description' => 'NULL when the attempt never resolved to a user.',
+      'description' => 'NULL when the attempt never resolved to a user. Deliberately kept when the user is deleted — a trail that vanishes with its subject is not a trail.',
     ],
     'subject_hash' => [
       'title' => 'Subject (hashed)',
