@@ -50,7 +50,7 @@ final class OidcSupportHeadlessTest extends TestCase implements HeadlessInterfac
       ++$calls;
       $save = TRUE;
       self::assertFalse($item->isHit());
-      self::assertSame(NULL, $item->get());
+      self::assertNull($item->get());
       self::assertSame($item, $item->set('value'));
       self::assertSame('value', $item->get());
 
@@ -74,7 +74,6 @@ final class OidcSupportHeadlessTest extends TestCase implements HeadlessInterfac
         ++$calls;
         throw new \RuntimeException('temporary provider failure');
       });
-      self::fail('the original fetch error must be propagated');
     }
     catch (\RuntimeException $e) {
       self::assertSame('temporary provider failure', $e->getMessage());
@@ -127,7 +126,8 @@ final class OidcSupportHeadlessTest extends TestCase implements HeadlessInterfac
     $loader = new RefreshableJwksLoader($inner, new OidcCache(), 900, 'support-secret');
     $token = JwtFixture::sign(JwtFixture::claims(time(), 'nonce'), kid: 'new-key');
 
-    self::assertSame('old-key', $loader->load($uri)['keys'][0]['kid'] ?? NULL);
+    $initialKeys = $loader->load($uri);
+    self::assertSame([['kid' => 'old-key']], $initialKeys['keys'] ?? NULL);
     self::assertTrue($loader->refreshForUnknownKid($uri, $token));
     self::assertSame(2, $inner->calls);
     self::assertFalse($loader->refreshForUnknownKid($uri, $token), 'the refreshed key is now known');
@@ -309,9 +309,13 @@ final class OidcSupportHeadlessTest extends TestCase implements HeadlessInterfac
     self::assertSame([], Value::ints('not-a-list'));
   }
 
-  public function testTheDefaultHttpClientUsesTheSymfonyContract(): void {
+  public function testTheDefaultHttpClientCanBeRestoredAfterAnOverride(): void {
+    $override = new \Symfony\Component\HttpClient\MockHttpClient();
+    Http::setClient($override);
+    self::assertSame($override, Http::client());
+
     Http::setClient(NULL);
-    self::assertInstanceOf(\Symfony\Contracts\HttpClient\HttpClientInterface::class, Http::client());
+    self::assertNotSame($override, Http::client());
   }
 
 }

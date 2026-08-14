@@ -23,6 +23,12 @@ class Prune extends AbstractAction {
    */
   protected ?int $days = NULL;
 
+  public function setDays(?int $days): self {
+    $this->days = $days;
+
+    return $this;
+  }
+
   public function _run(Result $result): void {
     $auditDeleted = Audit::prune($this->days);
     $sessionsDeleted = SessionRegistry::prune($this->days);

@@ -73,6 +73,9 @@ final class SessionMark {
     Audit::record(Options::EVENT_LOGOUT, $provider);
   }
 
+  /**
+   * @phpstan-impure
+   */
   public static function pendingEndSession(): ?string {
     return self::$pendingEndSession;
   }

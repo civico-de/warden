@@ -144,7 +144,7 @@ final class OidcClient {
    * Load the same cached key set used for token verification, for health
    * checks that need to distinguish valid discovery from unusable keys.
    *
-   * @return array<string, mixed>
+   * @return array{keys: non-empty-list<array<string, mixed>>}
    */
   public static function jwksFor(Provider $provider): array {
     $metadata = self::metadataFor($provider);
@@ -156,11 +156,17 @@ final class OidcClient {
       $cacheSecret,
     );
     $keys = $loader->load($metadata->jwksUri());
-    if (!is_array($keys['keys'] ?? NULL) || $keys['keys'] === []) {
+    $keySet = $keys['keys'] ?? NULL;
+    if (!is_array($keySet) || !array_is_list($keySet) || $keySet === []) {
       throw new \CRM_Core_Exception('warden: the provider key set contains no signing keys');
     }
+    foreach ($keySet as $key) {
+      if (!is_array($key)) {
+        throw new \CRM_Core_Exception('warden: the provider key set contains an invalid signing key');
+      }
+    }
 
-    return Value::row($keys);
+    return ['keys' => $keySet];
   }
 
   /**
