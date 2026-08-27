@@ -126,6 +126,24 @@ final class ProvisioningHeadlessTest extends TestCase implements HeadlessInterfa
     self::assertCount(1, WardenIdentity::get(FALSE)->addWhere('subject', '=', 'subject-B')->execute());
   }
 
+  public function testADeactivatedLinkedUserIsRefused(): void {
+    $provider = $this->provider();
+    $userId = Provisioner::resolve($provider, $this->claims(['sub' => 'subject-inactive']));
+    User::update(FALSE)->addWhere('id', '=', $userId)->addValue('is_active', FALSE)->execute();
+
+    $threw = NULL;
+    try {
+      Provisioner::resolve($provider, $this->claims(['sub' => 'subject-inactive']));
+    }
+    catch (\CRM_Core_Exception $e) {
+      $threw = $e;
+    }
+
+    self::assertNotNull($threw, 'a deactivated account must not sign in through the IdP');
+    self::assertStringContainsString('disabled', $threw->getMessage());
+    self::assertCount(1, WardenAudit::get(FALSE)->addWhere('reason', '=', 'user_inactive')->execute());
+  }
+
   public function testLoginCountIsTracked(): void {
     $provider = $this->provider();
     Provisioner::resolve($provider, $this->claims(['sub' => 'subject-C']));
