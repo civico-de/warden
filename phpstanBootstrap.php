@@ -27,7 +27,7 @@ defined('CIVICRM_UF_BASEURL') || define('CIVICRM_UF_BASEURL', 'http://localhost'
 // that does gets phpstan's honest "unknown class".
 $ckExtDir = getenv('CK_EXT_DIR') ?: '/var/www/html/ext';
 libxml_use_internal_errors(use_errors: TRUE);
-$ckInfo = simplexml_load_file(dirname(__DIR__) . '/info.xml');
+$ckInfo = simplexml_load_file(__DIR__ . '/info.xml');
 foreach ($ckInfo === FALSE ? [] : $ckInfo->requires->ext ?? [] as $ckRequired) {
   $ckKey = trim((string) $ckRequired);
   $ckDir = $ckExtDir . '/' . $ckKey;

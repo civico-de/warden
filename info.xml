@@ -17,7 +17,7 @@
     <url desc="Support">https://github.com/civico-de/warden/issues</url>
   </urls>
   <releaseDate>2026-08-27</releaseDate>
-  <version>0.3.2</version>
+  <version>0.3.3</version>
   <develStage>alpha</develStage>
   <compatibility mode="semver">
     <!-- Warden deliberately targets the currently verified Standalone line
