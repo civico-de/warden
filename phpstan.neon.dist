@@ -48,7 +48,7 @@ parameters:
 		- /var/www/html/core/ext/standaloneusers/CRM
 		- /var/www/html/core/ext/authx/Civi
 	bootstrapFiles:
-		- phpstanBootstrap.php
+		- tests/phpstanBootstrap.php
 	civikitchen:
 		# ck.sql.unknownTable checks `civicrm_`-prefixed table names in raw SQL
 		# against core's schema plus this repo's own (schema/, xml/schema/,

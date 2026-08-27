@@ -20,7 +20,9 @@
         "symfony/http-client": "^7.3"
     },
     "require-dev": {
+        "ext-libxml": "*",
         "ext-openssl": "*",
+        "ext-simplexml": "*",
         "phpunit/phpunit": "^9.6"
     },
     "autoload": {
