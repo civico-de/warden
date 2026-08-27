@@ -28,3 +28,7 @@ Thumbs.db
 # TypeScript's incremental build cache (named after the tsconfig it belongs
 # to, so a bare '.tsbuildinfo' pattern misses it)
 *.tsbuildinfo
+
+# Live Entra E2E: Tofu working files
+tests/e2e/entra-live/tofu/.terraform/
+tests/e2e/entra-live/tofu/*.tfstate*
