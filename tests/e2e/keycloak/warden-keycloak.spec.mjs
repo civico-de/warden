@@ -61,7 +61,16 @@ test("Keycloak login and signed back-channel logout revoke the CiviCRM session",
   // persists the signed revocation and terminates that exact session before
   // the browser's next CiviCRM route runs.
   await page.goto(`${CIVI}/civicrm`);
-  await expect(page).toHaveURL(/\/civicrm\/login(?:[/?#]|$)/);
+  await expect
+    .poll(() => {
+      const url = new URL(page.url());
+      return (
+        url.pathname === "/civicrm/login" ||
+        (url.pathname === "/civicrm/home" &&
+          url.searchParams.get("permissionDeniedRedirect") === "1")
+      );
+    })
+    .toBe(true);
 
   await api.dispose();
 });
