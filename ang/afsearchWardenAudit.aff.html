@@ -1,7 +1,7 @@
 <div class="af-markup">
   <div class="help">
     {{:: ts('Every sign-in attempt warden handled, and why it ended the way it did. Core CiviCRM keeps no login trail of its own, so this is the only record.') }}
-    {{:: ts('No personal data is stored here beyond the source IP address: the subject is a salted hash and tokens are never written, at any log level. Rows are deleted after the configured retention period.') }}
+    {{:: ts('Each row holds the source IP address, the CiviCRM user and provider involved, and a salted hash of the provider subject; tokens are never written, at any log level. Rows are deleted after the configured retention period.') }}
   </div>
 </div>
 <div af-fieldset="">

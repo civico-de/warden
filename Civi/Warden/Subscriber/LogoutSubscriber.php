@@ -56,10 +56,12 @@ final class LogoutSubscriber extends AutoSubscriber {
 
     try {
       SessionMark::captureEndSession();
-      SessionRegistry::clearCurrent();
     }
     catch (\Throwable $e) {
       \Civi::log()->warning('warden: could not resolve an end-session endpoint: {msg}', ['msg' => $e->getMessage()]);
+    }
+    finally {
+      SessionRegistry::clearCurrent();
     }
   }
 
