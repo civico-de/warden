@@ -61,7 +61,13 @@ final class LogoutSubscriber extends AutoSubscriber {
       \Civi::log()->warning('warden: could not resolve an end-session endpoint: {msg}', ['msg' => $e->getMessage()]);
     }
     finally {
-      SessionRegistry::clearCurrent();
+      // A failed cleanup must not stop the local logout either.
+      try {
+        SessionRegistry::clearCurrent();
+      }
+      catch (\Throwable $e) {
+        \Civi::log()->warning('warden: could not clear the session binding on logout: {msg}', ['msg' => $e->getMessage()]);
+      }
     }
   }
 

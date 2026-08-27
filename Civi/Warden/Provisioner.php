@@ -213,7 +213,18 @@ final class Provisioner {
       self::link($provider, $userId, $subject);
     }
     catch (\Throwable $e) {
-      $transaction->rollback();
+      // Anything audited inside the frame is gone with the rollback, so the
+      // frame is closed (rollback() only flags; commit() executes it) before
+      // the evidence of the refusal is written.
+      $transaction->rollback()->commit();
+      Audit::record(
+        Options::EVENT_LOGIN_FAILURE,
+        $provider,
+        NULL,
+        'provision_rolled_back',
+        substr($e->getMessage(), 0, 200),
+        $subject,
+      );
       throw $e;
     }
     $transaction->commit();

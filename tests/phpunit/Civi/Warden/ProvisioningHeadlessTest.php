@@ -165,6 +165,11 @@ final class ProvisioningHeadlessTest extends TestCase implements HeadlessInterfa
     self::assertSame($contacts, \Civi\Api4\Contact::get(FALSE)->selectRowCount()->execute()->countMatched(), 'no stranded contact');
     self::assertSame($users, User::get(FALSE)->selectRowCount()->execute()->countMatched(), 'no stranded user');
     self::assertCount(0, WardenIdentity::get(FALSE)->addWhere('subject', '=', 'subject-clash')->execute());
+    self::assertCount(
+      1,
+      WardenAudit::get(FALSE)->addWhere('reason', '=', 'provision_rolled_back')->execute(),
+      'the refusal is audited outside the rolled-back frame',
+    );
   }
 
   public function testTheSameSubjectAtTwoProvidersGetsTwoUsernames(): void {
