@@ -72,6 +72,8 @@ services:
       CIVIKITCHEN_ENABLE_EXTENSIONS: warden
       SSL_CERT_FILE: /e2e-certs/ca.crt
       CURL_CA_BUNDLE: /e2e-certs/ca.crt
+      NO_PROXY: app,db,entra,login.microsoftonline.com,localhost,127.0.0.1
+      no_proxy: app,db,entra,login.microsoftonline.com,localhost,127.0.0.1
     volumes:
       - ..:/var/www/html/ext/warden
       - ./init.d:/civikitchen-init.d:ro
@@ -94,6 +96,8 @@ services:
     environment:
       HOME: /tmp/warden-playwright
       NODE_EXTRA_CA_CERTS: /e2e-certs/ca.crt
+      NO_PROXY: app,db,entra,login.microsoftonline.com,localhost,127.0.0.1
+      no_proxy: app,db,entra,login.microsoftonline.com,localhost,127.0.0.1
     volumes:
       - ..:/repo:ro
       - entra-certs:/e2e-certs:ro

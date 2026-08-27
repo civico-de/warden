@@ -69,6 +69,8 @@ services:
       CIVIKITCHEN_ENABLE_EXTENSIONS: warden
       SSL_CERT_FILE: /e2e-certs/ca.crt
       CURL_CA_BUNDLE: /e2e-certs/ca.crt
+      NO_PROXY: app,db,keycloak,localhost,127.0.0.1
+      no_proxy: app,db,keycloak,localhost,127.0.0.1
     volumes:
       - ..:/var/www/html/ext/warden
       - ./init.d:/civikitchen-init.d:ro
@@ -93,6 +95,8 @@ services:
     working_dir: /tmp/warden-keycloak-e2e
     environment:
       HOME: /tmp/warden-playwright
+      NO_PROXY: app,db,keycloak,localhost,127.0.0.1
+      no_proxy: app,db,keycloak,localhost,127.0.0.1
     volumes:
       - ..:/repo:ro
       - ../tests/e2e/keycloak/playwright-report:/tmp/warden-keycloak-e2e/playwright-report
