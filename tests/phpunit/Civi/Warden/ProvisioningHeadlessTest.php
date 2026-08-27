@@ -144,6 +144,57 @@ final class ProvisioningHeadlessTest extends TestCase implements HeadlessInterfa
     self::assertCount(1, WardenAudit::get(FALSE)->addWhere('reason', '=', 'user_inactive')->execute());
   }
 
+  public function testAFailedLinkRollsBackTheProvisionedContactAndUser(): void {
+    $provider = $this->provider();
+    // The verified address is already taken: the user insert fails on
+    // uf_name after the contact has been created.
+    $this->makeUser('taken@example.org');
+    $claims = $this->claims(['sub' => 'subject-clash', 'email' => 'taken@example.org', 'email_verified' => TRUE]);
+    $contacts = \Civi\Api4\Contact::get(FALSE)->selectRowCount()->execute()->countMatched();
+    $users = User::get(FALSE)->selectRowCount()->execute()->countMatched();
+
+    $threw = NULL;
+    try {
+      Provisioner::resolve($provider, $claims);
+    }
+    catch (\Throwable $e) {
+      $threw = $e;
+    }
+
+    self::assertNotNull($threw);
+    self::assertSame($contacts, \Civi\Api4\Contact::get(FALSE)->selectRowCount()->execute()->countMatched(), 'no stranded contact');
+    self::assertSame($users, User::get(FALSE)->selectRowCount()->execute()->countMatched(), 'no stranded user');
+    self::assertCount(0, WardenIdentity::get(FALSE)->addWhere('subject', '=', 'subject-clash')->execute());
+  }
+
+  public function testTheSameSubjectAtTwoProvidersGetsTwoUsernames(): void {
+    $a = $this->provider();
+    $b = $this->provider(['name' => 'other_idp', 'issuer' => 'https://other-idp.example.org']);
+    $claims = ['sub' => 'shared-subject', 'preferred_username' => 'same.person'];
+
+    $userA = Provisioner::resolve($a, $this->claims($claims + ['email' => 'a@example.org']));
+    $userB = Provisioner::resolve($b, $this->claims($claims + ['email' => 'b@example.org']));
+
+    self::assertNotSame($userA, $userB);
+    $names = User::get(FALSE)->addSelect('username')->addWhere('id', 'IN', [$userA, $userB])->execute()->column('username');
+    self::assertCount(2, array_unique($names));
+    foreach ($names as $name) {
+      self::assertStringStartsWith('same.person-', $name);
+    }
+  }
+
+  public function testALongPreferredUsernameKeepsTheUniqueSuffix(): void {
+    $provider = $this->provider();
+    $userId = Provisioner::resolve($provider, $this->claims([
+      'sub' => 'long-subject',
+      'preferred_username' => str_repeat('a', 80),
+    ]));
+
+    $username = User::get(FALSE)->addSelect('username')->addWhere('id', '=', $userId)->execute()->single()['username'];
+    self::assertSame(60, strlen($username));
+    self::assertMatchesRegularExpression('/^a{47}-[0-9a-f]{12}$/', $username);
+  }
+
   public function testLoginCountIsTracked(): void {
     $provider = $this->provider();
     Provisioner::resolve($provider, $this->claims(['sub' => 'subject-C']));

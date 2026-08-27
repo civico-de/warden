@@ -189,24 +189,34 @@ final class Provisioner {
     // The username has to be stable and unique. `preferred_username` is
     // neither — two people can hold the same one over time — so it is used
     // only as a readable prefix, with the subject digest carrying uniqueness.
+    // An OIDC identity is (issuer, sub), so the digest covers both; the
+    // suffix keeps its full length, only the readable prefix is truncated.
     $preferred = Value::nullableStr($claims->claim('preferred_username'));
     $prefix = $preferred === NULL ? '' : preg_replace('/[^A-Za-z0-9._-]/', '', $preferred) ?? '';
-    $username = substr(
-      ($prefix === '' ? $provider->name : $prefix) . '-' . substr(Audit::hashSubject($subject), 0, 12),
-      0,
-      60,
-    );
+    $suffix = '-' . substr(Audit::hashSubject($provider->issuerForComparison() . "\0" . $subject), 0, 12);
+    $username = substr($prefix === '' ? $provider->name : $prefix, 0, 60 - strlen($suffix)) . $suffix;
 
-    $userId = Users::provision(
-      $username,
-      // Only a verified address is written onto the contact. An unverified one
-      // would let the IdP put an arbitrary address on a CiviCRM contact.
-      $emailVerified ? $email : NULL,
-      Value::nullableStr($claims->claim('name')),
-      RoleMapper::apply($provider, $provider->defaultRoleNames, $mappedRoles),
-    );
-
-    self::link($provider, $userId, $subject);
+    // Contact, user and identity link stand or fall together: a lost
+    // unique-index race or a failed link must not leave a stranded account.
+    // Nested (savepoint) so the rollback is immediate even inside an outer
+    // transaction, instead of being deferred to its end.
+    $transaction = new \CRM_Core_Transaction(TRUE);
+    try {
+      $userId = Users::provision(
+        $username,
+        // Only a verified address is written onto the contact. An unverified
+        // one would let the IdP put an arbitrary address on a CiviCRM contact.
+        $emailVerified ? $email : NULL,
+        Value::nullableStr($claims->claim('name')),
+        RoleMapper::apply($provider, $provider->defaultRoleNames, $mappedRoles),
+      );
+      self::link($provider, $userId, $subject);
+    }
+    catch (\Throwable $e) {
+      $transaction->rollback();
+      throw $e;
+    }
+    $transaction->commit();
     Audit::record(
       Options::EVENT_PROVISIONED,
       $provider,
