@@ -204,7 +204,11 @@ final class StatusCheckHeadlessTest extends TestCase implements HeadlessInterfac
     ]);
 
     foreach ($this->names() as $name) {
-      self::assertStringNotContainsString('warden_entra_', $name, 'unexpected Entra warning for provider ' . $provider->id);
+      self::assertStringNotContainsString(
+        'warden_entra_',
+        $name,
+        'unexpected Entra warning for provider ' . $provider->id,
+      );
     }
   }
 

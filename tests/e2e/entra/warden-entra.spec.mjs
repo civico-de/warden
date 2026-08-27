@@ -26,8 +26,8 @@ test("Entra authorization-code SSO provisions a CiviCRM session and signs out at
   await expect(page).toHaveURL(new RegExp(`^${CIVI}/civicrm(?:$|[/?#])`));
   await expect(page).not.toHaveURL(/\/civicrm\/login/);
 
-  const providerLogout = page.waitForRequest(
-    (request) => request.url().startsWith(`${ENTRA}/oauth2/v2.0/logout?`),
+  const providerLogout = page.waitForRequest((request) =>
+    request.url().startsWith(`${ENTRA}/oauth2/v2.0/logout?`),
   );
   await page.goto(`${CIVI}/civicrm/logout`);
   const logoutRequest = await providerLogout;

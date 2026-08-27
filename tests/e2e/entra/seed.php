@@ -7,6 +7,7 @@ use Civi\Api4\WardenProvider;
 use Civi\Warden\Entra;
 
 const WARDEN_ENTRA_E2E_TENANT = 'a0b1c2d3-1234-4567-89ab-0123456789cd';
+
 const WARDEN_ENTRA_E2E_ROLE = 'warden_entra_staff_e2e';
 
 $role = Role::get(FALSE)

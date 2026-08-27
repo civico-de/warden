@@ -1,9 +1,4 @@
-import {
-  createHash,
-  generateKeyPairSync,
-  randomBytes,
-  sign,
-} from "node:crypto";
+import { createHash, generateKeyPairSync, randomBytes, sign } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createServer } from "node:https";
 import { URL, URLSearchParams } from "node:url";
@@ -100,7 +95,10 @@ const server = createServer(
   async (request, response) => {
     const url = new URL(request.url ?? "/", AUTHORITY);
 
-    if (request.method === "GET" && url.pathname === `/${TENANT}/v2.0/.well-known/openid-configuration`) {
+    if (
+      request.method === "GET" &&
+      url.pathname === `/${TENANT}/v2.0/.well-known/openid-configuration`
+    ) {
       json(response, 200, {
         issuer: ISSUER,
         authorization_endpoint: `${AUTHORITY}/${TENANT}/oauth2/v2.0/authorize`,
@@ -136,10 +134,11 @@ const server = createServer(
           loginPage(response, params, "That account or password is incorrect.");
           return;
         }
-        if (params.get("client_id") !== CLIENT_ID
-          || params.get("redirect_uri") !== REDIRECT_URI
-          || params.get("response_type") !== "code"
-          || params.get("code_challenge_method") !== "S256"
+        if (
+          params.get("client_id") !== CLIENT_ID ||
+          params.get("redirect_uri") !== REDIRECT_URI ||
+          params.get("response_type") !== "code" ||
+          params.get("code_challenge_method") !== "S256"
         ) {
           json(response, 400, { error: "invalid_request" });
           return;
@@ -166,12 +165,13 @@ const server = createServer(
       codes.delete(code);
       const verifier = params.get("code_verifier") ?? "";
       const challenge = createHash("sha256").update(verifier).digest("base64url");
-      if (!validBasicAuth(request)
-        || params.get("grant_type") !== "authorization_code"
-        || params.get("redirect_uri") !== REDIRECT_URI
-        || authorization === undefined
-        || authorization.redirectUri !== REDIRECT_URI
-        || authorization.challenge !== challenge
+      if (
+        !validBasicAuth(request) ||
+        params.get("grant_type") !== "authorization_code" ||
+        params.get("redirect_uri") !== REDIRECT_URI ||
+        authorization === undefined ||
+        authorization.redirectUri !== REDIRECT_URI ||
+        authorization.challenge !== challenge
       ) {
         json(response, 400, { error: "invalid_grant" });
         return;
@@ -203,10 +203,12 @@ const server = createServer(
       return;
     }
 
-    if ((request.method === "GET" || request.method === "POST")
-      && url.pathname === `/${TENANT}/oauth2/v2.0/logout`
+    if (
+      (request.method === "GET" || request.method === "POST") &&
+      url.pathname === `/${TENANT}/oauth2/v2.0/logout`
     ) {
-      const destination = url.searchParams.get("post_logout_redirect_uri") ?? "http://app/civicrm/login";
+      const destination =
+        url.searchParams.get("post_logout_redirect_uri") ?? "http://app/civicrm/login";
       response.writeHead(302, { location: destination, "cache-control": "no-store" });
       response.end();
       return;

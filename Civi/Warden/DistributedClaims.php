@@ -25,9 +25,7 @@ final class DistributedClaims {
       return TRUE;
     }
 
-    return $path === 'groups'
-      && !array_key_exists('groups', $claims)
-      && ($claims['hasgroups'] ?? NULL) === TRUE;
+    return $path === 'groups' && !array_key_exists('groups', $claims) && ($claims['hasgroups'] ?? NULL) === TRUE;
   }
 
 }

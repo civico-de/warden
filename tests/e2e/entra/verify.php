@@ -34,8 +34,7 @@ if (WardenAudit::get(FALSE)
   ->addWhere('provider_id', '=', $provider['id'])
   ->addWhere('event', '=', 'login_success')
   ->execute()
-  ->count() !== 1
-) {
+  ->count() !== 1) {
   throw new RuntimeException('The successful Entra login was not audited exactly once.');
 }
 

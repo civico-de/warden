@@ -52,10 +52,12 @@ final class Entra {
   }
 
   private static function validTenantId(string $tenantId): bool {
-    return preg_match(
-      '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i',
-      $tenantId,
-    ) === 1;
+    return (
+      preg_match(
+        '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i',
+        $tenantId,
+      ) === 1
+    );
   }
 
 }
