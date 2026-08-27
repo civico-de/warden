@@ -285,6 +285,33 @@ final class SessionAndSecretHeadlessTest extends TestCase implements HeadlessInt
 
   // --- Audit and rate limiting ------------------------------------------
 
+  public function testTheAuditTrailIsAppendOnlyThroughTheApi(): void {
+    $row = WardenAudit::create(FALSE)->addValue('event', Options::EVENT_LOGIN_FAILURE)->execute()->single();
+    $permissions = \CRM_Core_Config::singleton()->userPermissionClass->permissions;
+    \CRM_Core_Config::singleton()->userPermissionClass->permissions = ['access CiviCRM', 'administer warden', 'view warden log'];
+
+    try {
+      self::assertCount(1, WardenAudit::get(TRUE)->addWhere('id', '=', $row['id'])->execute());
+      $denied = 0;
+      foreach ([
+        static fn() => WardenAudit::create(TRUE)->addValue('event', Options::EVENT_LOGIN_SUCCESS)->execute(),
+        static fn() => WardenAudit::update(TRUE)->addWhere('id', '=', $row['id'])->addValue('detail', 'forged')->execute(),
+        static fn() => WardenAudit::delete(TRUE)->addWhere('id', '=', $row['id'])->execute(),
+      ] as $write) {
+        try {
+          $write();
+        }
+        catch (\Civi\API\Exception\UnauthorizedException) {
+          $denied++;
+        }
+      }
+      self::assertSame(3, $denied, 'even a warden administrator may not forge, rewrite or erase the trail');
+    }
+    finally {
+      \CRM_Core_Config::singleton()->userPermissionClass->permissions = $permissions;
+    }
+  }
+
   public function testAuditRowsCarryNoRawSubject(): void {
     $provider = $this->provider(['name' => 'audit_idp']);
     Audit::record(Options::EVENT_LOGIN_FAILURE, $provider, NULL, 'bad_signature', 'test', 'raw-subject-value');

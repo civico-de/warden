@@ -26,8 +26,11 @@ class WardenAudit extends Generic\DAOEntity {
       'meta' => ['access CiviCRM'],
       'default' => ['administer warden'],
       'get' => [['administer warden', 'view warden log']],
-      'create' => ['administer warden'],
-      'update' => ['administer warden'],
+      // Append-only evidence: rows are written and pruned internally with
+      // checkPermissions off; no API caller may forge, rewrite or erase them.
+      'create' => [\CRM_Core_Permission::ALWAYS_DENY_PERMISSION],
+      'update' => [\CRM_Core_Permission::ALWAYS_DENY_PERMISSION],
+      'delete' => [\CRM_Core_Permission::ALWAYS_DENY_PERMISSION],
     ];
   }
 
