@@ -76,35 +76,9 @@ final class LoginFlow {
    *
    * @throws \CRM_Core_Exception
    */
-  public function complete(string $state, string $code): array {
-    // 1. STATE FIRST — before any session mutation, and before the code is
-    //    spent. Single use, so a replay of this whole callback finds nothing.
-    $payload = $this->states->consume($state);
-    if ($payload === NULL) {
-      Audit::record(
-        Options::EVENT_LOGIN_FAILURE,
-        NULL,
-        NULL,
-        'unknown_state',
-        'state was unknown, expired or from another session',
-      );
-
-      throw new \CRM_Core_Exception('This login link has expired or was already used. Please start again.');
-    }
-
-    $providerId = Value::int($payload['provider_id'] ?? NULL);
-    $provider = ProviderRepository::find($providerId);
-    if ($provider === NULL || !$provider->usable()) {
-      Audit::record(
-        Options::EVENT_LOGIN_DENIED,
-        NULL,
-        NULL,
-        'provider_unavailable',
-        'provider ' . $providerId . ' is gone or disabled',
-      );
-
-      throw new \CRM_Core_Exception('This identity provider is no longer available.');
-    }
+  public function complete(string $state, string $code, ?string $issuer = NULL): array {
+    $provider = $this->consumeState($state, $issuer);
+    $payload = $this->lastPayload;
 
     $nonce = Value::str($payload['nonce'] ?? NULL);
     $verifier = Value::str($payload['code_verifier'] ?? NULL);
@@ -195,6 +169,63 @@ final class LoginFlow {
   }
 
   /**
+   * @var array<string, mixed>
+   */
+  private array $lastPayload = [];
+
+  /**
+   * Redeem a state and resolve the provider it belongs to. Shared by the
+   * success and the error branch of the callback, so an error response can
+   * neither be attributed to a provider nor counted without a valid state.
+   *
+   * @param string|null $issuer
+   *   The RFC 9207 `iss` response parameter, when the provider sent one.
+   *
+   * @throws \CRM_Core_Exception
+   */
+  public function consumeState(string $state, ?string $issuer = NULL): Provider {
+    // STATE FIRST — before any session mutation, and before the code is
+    // spent. Single use, so a replay of this whole callback finds nothing.
+    $payload = $this->states->consume($state);
+    if ($payload === NULL) {
+      Audit::record(
+        Options::EVENT_LOGIN_FAILURE,
+        NULL,
+        NULL,
+        'unknown_state',
+        'state was unknown, expired or from another session',
+      );
+
+      throw new \CRM_Core_Exception('This login link has expired or was already used. Please start again.');
+    }
+    $this->lastPayload = $payload;
+
+    $providerId = Value::int($payload['provider_id'] ?? NULL);
+    $provider = ProviderRepository::find($providerId);
+    if ($provider === NULL || !$provider->usable()) {
+      Audit::record(
+        Options::EVENT_LOGIN_DENIED,
+        NULL,
+        NULL,
+        'provider_unavailable',
+        'provider ' . $providerId . ' is gone or disabled',
+      );
+
+      throw new \CRM_Core_Exception('This identity provider is no longer available.');
+    }
+
+    // Mix-up defence (RFC 9207): a response that names an issuer must name
+    // the one this state was minted for.
+    if ($issuer !== NULL && $issuer !== $provider->issuerForComparison()) {
+      Audit::record(Options::EVENT_LOGIN_FAILURE, $provider, NULL, 'issuer_mismatch', 'iss parameter names another issuer');
+
+      throw new \CRM_Core_Exception('This sign-in response did not come from the expected identity provider.');
+    }
+
+    return $provider;
+  }
+
+  /**
    * Establish the CiviCRM session.
    *
    * Separate from complete() so the ordering above is visible at the call site
@@ -250,6 +281,7 @@ final class LoginFlow {
     catch (\Throwable $e) {
       // A login without its revocation binding would silently promise single
       // logout and then ignore it. Roll the just-created session back instead.
+      Audit::record(Options::EVENT_LOGIN_FAILURE, $provider, $userId, 'session_binding_failed', substr($e->getMessage(), 0, 200));
       SessionMark::clear();
       if (function_exists('_authx_uf')) {
         _authx_uf()->logoutSession();

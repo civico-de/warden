@@ -187,29 +187,27 @@ final class RoutesHeadlessTest extends TestCase implements HeadlessInterface, Tr
     self::assertCount(1, WardenAudit::get(FALSE)->addWhere('reason', '=', 'missing_parameters')->execute());
   }
 
-  public function testTheCallbackRecordsAProviderReportedError(): void {
+  public function testAnErrorResponseWithoutAValidStateIsNotCountedAsAProviderError(): void {
     $this->provider();
-    $_GET['error'] = 'access_denied';
 
+    $_GET['error'] = 'access_denied';
+    $this->captureRedirect(ReturnPage::handle(...));
+    $_GET['state'] = 'a-state-nobody-issued';
     $this->captureRedirect(ReturnPage::handle(...));
 
-    $audit = WardenAudit::get(FALSE)->addWhere('reason', '=', 'provider_error')->execute()->single();
-    self::assertSame('access_denied', $audit['detail']);
+    self::assertCount(0, WardenAudit::get(FALSE)->addWhere('reason', '=', 'provider_error')->execute());
+    self::assertCount(1, WardenAudit::get(FALSE)->addWhere('reason', '=', 'missing_parameters')->execute());
+    self::assertCount(1, WardenAudit::get(FALSE)->addWhere('reason', '=', 'unknown_state')->execute());
   }
 
   public function testAProviderErrorDescriptionIsNotStoredVerbatim(): void {
-    $this->provider();
     // Attacker-controlled text arriving in the query string.
-    $_GET['error'] = '<script>alert(1)</script>';
-
-    $this->captureRedirect(ReturnPage::handle(...));
-
-    $audit = WardenAudit::get(FALSE)->addWhere('reason', '=', 'provider_error')->execute()->single();
     self::assertSame(
       'scriptalertscript',
-      $audit['detail'],
+      ReturnPage::errorCode('<script>alert(1)</script>'),
       'only lowercase letters and underscores survive — digits and punctuation are stripped too',
     );
+    self::assertSame('access_denied', ReturnPage::errorCode('access_denied'));
   }
 
   public function testTheCallbackRefusesWhenWardenIsDisabled(): void {

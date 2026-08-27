@@ -269,6 +269,42 @@ final class LoginFlowHeadlessTest extends TestCase implements HeadlessInterface,
     self::assertCount(1, $audit);
   }
 
+  public function testAnErrorResponseIsAttributedThroughItsState(): void {
+    [$provider, $state] = $this->begin();
+    $this->stubHttp([]);
+
+    self::assertSame($provider->id, $this->flow()->consumeState($state)->id);
+    // Single use, like a successful callback.
+    $this->expectException(\CRM_Core_Exception::class);
+    $this->flow()->consumeState($state);
+  }
+
+  public function testAnIssuerParameterNamingAnotherProviderIsRefusedBeforeTheExchange(): void {
+    [$provider, $state] = $this->begin();
+    // No token or JWKS response queued: the refusal must happen first.
+    $this->stubHttp([]);
+
+    try {
+      $this->flow()->complete($state, 'code', 'https://other-idp.example.org');
+      self::fail('a mismatching iss must be refused');
+    }
+    catch (\CRM_Core_Exception $e) {
+      self::assertStringContainsString('expected identity provider', $e->getMessage());
+    }
+
+    $audit = WardenAudit::get(FALSE)->addWhere('reason', '=', 'issuer_mismatch')->execute()->single();
+    self::assertSame($provider->id, $audit['provider_id']);
+  }
+
+  public function testAMatchingIssuerParameterIsAccepted(): void {
+    [$provider, $state, $nonce] = $this->begin();
+    $this->stubHttp([$this->tokenResponse($nonce), $this->jwksResponse()]);
+
+    $result = $this->flow()->complete($state, 'code', $provider->issuerForComparison());
+
+    self::assertSame($provider->id, $result['provider']->id);
+  }
+
   public function testATokenSignedByTheWrongKeyIsRefused(): void {
     [, $state, $nonce] = $this->begin();
     $this->stubHttp([$this->tokenResponse($nonce, [], 'b'), $this->jwksResponse()]);

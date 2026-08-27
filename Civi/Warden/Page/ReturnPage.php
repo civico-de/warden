@@ -32,33 +32,40 @@ final class ReturnPage {
       self::fail('Too many failed sign-in attempts from your network. Please wait a few minutes and try again.');
     }
 
-    // The provider reporting its own failure. Recorded, but the description is
-    // attacker-controlled text, so only the code is kept and it is truncated.
+    $state = Value::nullableStr(\CRM_Utils_Request::retrieveValue('state', 'String', NULL, FALSE, 'GET'));
+    $code = Value::nullableStr(\CRM_Utils_Request::retrieveValue('code', 'String', NULL, FALSE, 'GET'));
     $error = Value::nullableStr(\CRM_Utils_Request::retrieveValue('error', 'String', NULL, FALSE, 'GET'));
+    $issuer = Value::nullableStr(\CRM_Utils_Request::retrieveValue('iss', 'String', NULL, FALSE, 'GET'));
+    $flow = LoginFlow::create();
+
+    // The provider reporting its own failure. An error response carries the
+    // state like a success does (RFC 6749 §4.1.2.1); without a valid one it is
+    // anonymous noise and is refused before it can be attributed or counted.
+    // The description is attacker-controlled text, so only the code is kept.
     if ($error !== NULL) {
-      Audit::record(
-        Options::EVENT_LOGIN_FAILURE,
-        NULL,
-        NULL,
-        'provider_error',
-        substr(preg_replace('/[^a-z_]/', '', strtolower($error)) ?? '', 0, 64),
-      );
+      if ($state === NULL) {
+        Audit::record(Options::EVENT_LOGIN_FAILURE, NULL, NULL, 'missing_parameters', 'error response without state');
+        self::fail('This sign-in link is incomplete. Please start again.');
+      }
+      try {
+        $provider = $flow->consumeState($state, $issuer);
+      }
+      catch (\CRM_Core_Exception $e) {
+        self::fail($e->getMessage());
+      }
+      Audit::record(Options::EVENT_LOGIN_FAILURE, $provider, NULL, 'provider_error', self::errorCode($error));
       self::fail('Your identity provider declined the sign-in.');
     }
 
-    $state = Value::nullableStr(\CRM_Utils_Request::retrieveValue('state', 'String', NULL, FALSE, 'GET'));
-    $code = Value::nullableStr(\CRM_Utils_Request::retrieveValue('code', 'String', NULL, FALSE, 'GET'));
     if ($state === NULL || $code === NULL) {
       Audit::record(Options::EVENT_LOGIN_FAILURE, NULL, NULL, 'missing_parameters', 'callback without state or code');
       self::fail('This sign-in link is incomplete. Please start again.');
     }
 
-    $flow = LoginFlow::create();
-
     try {
       // Consumes state (bound to the CURRENT session id), exchanges the code
       // and validates the ID token. Nothing has touched the session yet.
-      $result = $flow->complete($state, $code);
+      $result = $flow->complete($state, $code, $issuer);
     }
     catch (\CRM_Core_Exception $e) {
       self::fail($e->getMessage());
@@ -78,6 +85,14 @@ final class ReturnPage {
       rtrim(Value::str(\CRM_Utils_Constant::value('CIVICRM_UF_BASEURL')), '/')
         . LandingUrl::sanitise($result['landing']),
     );
+  }
+
+  /**
+   * Only lowercase letters and underscores of a provider's error code survive
+   * into the audit trail: the value arrives in the query string.
+   */
+  public static function errorCode(string $error): string {
+    return substr(preg_replace('/[^a-z_]/', '', strtolower($error)) ?? '', 0, 64);
   }
 
   private static function fail(string $message): never {
