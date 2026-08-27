@@ -176,7 +176,7 @@ final class DiscoveryHeadlessTest extends TestCase implements HeadlessInterface,
     $provider = $this->provider();
     Http::setClient(new MockHttpClient([$this->discovery()]));
 
-    SessionMark::set($provider);
+    SessionMark::set($provider, 'signed-id-token', 'user@example.org');
     self::assertSame($provider->id, SessionMark::providerId());
     self::assertNull(SessionMark::pendingEndSession());
 
@@ -184,6 +184,9 @@ final class DiscoveryHeadlessTest extends TestCase implements HeadlessInterface,
     $url = SessionMark::pendingEndSession();
     self::assertNotNull($url);
     self::assertStringStartsWith(self::ISSUER . '/protocol/openid-connect/logout?', $url);
+    parse_str((string) parse_url($url, PHP_URL_QUERY), $query);
+    self::assertSame('signed-id-token', $query['id_token_hint'] ?? NULL);
+    self::assertSame('user@example.org', $query['logout_hint'] ?? NULL);
     self::assertSame($url, SessionMark::consumeEndSession());
     self::assertNull(SessionMark::consumeEndSession());
 

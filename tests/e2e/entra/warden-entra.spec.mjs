@@ -34,6 +34,8 @@ test("Entra authorization-code SSO provisions a CiviCRM session and signs out at
   const logoutUrl = new URL(logoutRequest.url());
   expect(logoutUrl.searchParams.get("client_id")).toBe("11112222-bbbb-3333-cccc-4444dddd5555");
   expect(logoutUrl.searchParams.get("post_logout_redirect_uri")).toBe(`${CIVI}/civicrm/login`);
+  expect(logoutUrl.searchParams.get("id_token_hint")).toMatch(/^[\w-]+\.[\w-]+\.[\w-]+$/);
+  expect(logoutUrl.searchParams.get("logout_hint")).toBe("O.CiQ-opaque-login-hint");
   await expect(page).toHaveURL(/\/civicrm\/login(?:[/?#]|$)/);
 
   await api.dispose();

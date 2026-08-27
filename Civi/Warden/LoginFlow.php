@@ -72,7 +72,7 @@ final class LoginFlow {
   /**
    * Handle the callback: validate, resolve the user, log them in.
    *
-   * @return array{userId: int, landing: string, provider: Provider, claims: IdTokenClaims}
+   * @return array{userId: int, landing: string, provider: Provider, claims: IdTokenClaims, idToken: string, logoutHint: ?string}
    *
    * @throws \CRM_Core_Exception
    */
@@ -184,7 +184,14 @@ final class LoginFlow {
     // 4. Resolve to a user. May provision, may refuse.
     $userId = Provisioner::resolve($provider, $claims);
 
-    return ['userId' => $userId, 'landing' => $landing, 'provider' => $provider, 'claims' => $claims];
+    return [
+      'userId' => $userId,
+      'landing' => $landing,
+      'provider' => $provider,
+      'claims' => $claims,
+      'idToken' => (string) $idToken,
+      'logoutHint' => is_string($allClaims['login_hint'] ?? NULL) ? $allClaims['login_hint'] : NULL,
+    ];
   }
 
   /**
@@ -196,7 +203,7 @@ final class LoginFlow {
    *
    * @throws \CRM_Core_Exception
    */
-  public function establishSession(Provider $provider, int $userId, IdTokenClaims $claims): void {
+  public function establishSession(Provider $provider, int $userId, IdTokenClaims $claims, string $idToken, ?string $logoutHint = NULL): void {
     if (!function_exists('authx_login')) {
       throw new \CRM_Core_Exception('warden needs the authx extension, which is not enabled.');
     }
@@ -237,7 +244,7 @@ final class LoginFlow {
     }
 
     try {
-      SessionMark::set($provider);
+      SessionMark::set($provider, $idToken, $logoutHint);
       SessionRegistry::register($provider, $userId, $claims);
     }
     catch (\Throwable $e) {

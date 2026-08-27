@@ -186,6 +186,9 @@ const server = createServer(
           exp: now + 3600,
           iat: now,
           iss: ISSUER,
+          // Optional claim an Entra app registration exposes so the RP can
+          // send logout_hint.
+          login_hint: "O.CiQ-opaque-login-hint",
           name: "Warden Entra E2E",
           nbf: now - 5,
           nonce: authorization.nonce,
