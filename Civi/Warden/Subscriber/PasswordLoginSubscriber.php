@@ -99,7 +99,7 @@ final class PasswordLoginSubscriber extends AutoSubscriber {
     // the protection on, `User.passwordReset` stays reachable and the
     // pre_send_password_reset listener above refuses it for everyone who is
     // not an administrator.
-    if (!self::modeActive() || \Civi::settings()->get('warden_protect_admin_password_login') !== FALSE) {
+    if (!self::modeActive() || Value::bool(\Civi::settings()->get('warden_protect_admin_password_login'), TRUE)) {
       return;
     }
 

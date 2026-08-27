@@ -35,7 +35,7 @@ final class Escape {
       return TRUE;
     }
 
-    return \Civi::settings()->get('warden_enabled') === FALSE;
+    return !Value::bool(\Civi::settings()->get('warden_enabled'), TRUE);
   }
 
   public static function disabledByConstant(): bool {
@@ -50,7 +50,7 @@ final class Escape {
    * account is being attempted.
    */
   public static function passwordLoginProtected(?int $userId): bool {
-    if (\Civi::settings()->get('warden_protect_admin_password_login') === FALSE) {
+    if (!Value::bool(\Civi::settings()->get('warden_protect_admin_password_login'), TRUE)) {
       return FALSE;
     }
     if ($userId === NULL) {

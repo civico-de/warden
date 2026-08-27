@@ -190,6 +190,19 @@ final class ModeEnforcementHeadlessTest extends TestCase implements HeadlessInte
 
   // --- The master switch and the constant -------------------------------
 
+  public function testTheMasterSwitchWorksWhenStoredAsZero(): void {
+    foreach ([0, '0'] as $stored) {
+      \Civi::settings()->set('warden_enabled', $stored);
+      self::assertTrue(Escape::disabled(), 'a settings form may round-trip the toggle as ' . var_export($stored, TRUE));
+      \Civi::settings()->set('warden_protect_admin_password_login', $stored);
+      self::assertFalse(Escape::passwordLoginProtected($this->adminUserId));
+    }
+    \Civi::settings()->set('warden_enabled', TRUE);
+    \Civi::settings()->set('warden_protect_admin_password_login', TRUE);
+    self::assertFalse(Escape::disabled());
+    self::assertTrue(Escape::passwordLoginProtected($this->adminUserId));
+  }
+
   public function testTheMasterSwitchReleasesPasswordLogin(): void {
     $this->requireSso();
     \Civi::settings()->set('warden_enabled', FALSE);
