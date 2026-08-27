@@ -362,4 +362,14 @@ final class SingleLogoutHeadlessTest extends TestCase implements HeadlessInterfa
     self::assertCount(1, WardenSession::get(FALSE)->execute());
   }
 
+  public function testTheAuditRetentionOverrideLeavesSessionBindingsAlone(): void {
+    $provider = $this->provider();
+    $this->register($provider, $this->user(), 'local-live', 'sid-live');
+
+    $result = civicrm_api4('Warden', 'prune', ['days' => 1, 'checkPermissions' => FALSE])->single();
+
+    self::assertSame(0, $result['sessions_deleted']);
+    self::assertCount(1, WardenSession::get(FALSE)->execute());
+  }
+
 }

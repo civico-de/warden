@@ -77,7 +77,7 @@ final class LogoutSubscriber extends AutoSubscriber {
 
     // Only swap the redirect core makes right after a logout. Any other
     // redirect in the same request keeps its destination.
-    if (!str_contains(Value::str($uri->getPath()), 'civicrm/login')) {
+    if (preg_match('#(^|/)civicrm/login/?$#', Value::str($uri->getPath())) !== 1) {
       return;
     }
 

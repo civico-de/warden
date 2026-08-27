@@ -17,11 +17,20 @@ use Civi\Warden\SessionRegistry;
 class Prune extends AbstractAction {
 
   /**
-   * Override the configured retention, in days. NULL uses the setting.
+   * Override the audit retention, in days. NULL uses the setting.
    *
    * @var int|null
    */
   protected ?int $days = NULL;
+
+  /**
+   * Override the session-binding retention, in days. NULL uses the setting.
+   * Kept apart from `days`: trimming the audit trail must not disable
+   * back-channel logout for every live session.
+   *
+   * @var int|null
+   */
+  protected ?int $sessionDays = NULL;
 
   public function setDays(?int $days): self {
     $this->days = $days;
@@ -29,9 +38,15 @@ class Prune extends AbstractAction {
     return $this;
   }
 
+  public function setSessionDays(?int $sessionDays): self {
+    $this->sessionDays = $sessionDays;
+
+    return $this;
+  }
+
   public function _run(Result $result): void {
     $auditDeleted = Audit::prune($this->days);
-    $sessionsDeleted = SessionRegistry::prune($this->days);
+    $sessionsDeleted = SessionRegistry::prune($this->sessionDays);
     $result->exchangeArray([[
       // Backward-compatible total used by 0.1.x monitoring integrations.
       'deleted' => $auditDeleted + $sessionsDeleted,
