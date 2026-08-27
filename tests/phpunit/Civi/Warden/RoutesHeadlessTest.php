@@ -223,6 +223,29 @@ final class RoutesHeadlessTest extends TestCase implements HeadlessInterface, Tr
     self::assertCount(0, WardenAudit::get(FALSE)->execute(), 'a disabled warden should not even audit');
   }
 
+  public function testTheLoginRouteIsRateLimited(): void {
+    $this->provider();
+    \Civi::settings()->set('warden_rate_limit_attempts', 2);
+    \Civi::settings()->set('warden_rate_limit_window', 300);
+
+    $ip = Audit::clientIp();
+    for ($i = 0; $i < 2; $i++) {
+      WardenAudit::create(FALSE)
+        ->addValue('event', Options::EVENT_LOGIN_FAILURE)
+        ->addValue('source_ip', $ip)
+        ->execute();
+    }
+
+    $url = $this->captureRedirect(LoginPage::handle(...));
+
+    self::assertStringContainsString('civicrm/login', $url);
+    self::assertCount(
+      1,
+      WardenAudit::get(FALSE)->addWhere('event', '=', Options::EVENT_RATE_LIMITED)->execute(),
+      'the limiter must trip before discovery is attempted',
+    );
+  }
+
   public function testTheCallbackIsRateLimited(): void {
     $this->provider();
     \Civi::settings()->set('warden_rate_limit_attempts', 2);

@@ -9,6 +9,7 @@ use Civi\Warden\Escape;
 use Civi\Warden\LandingUrl;
 use Civi\Warden\LoginFlow;
 use Civi\Warden\Options;
+use Civi\Warden\RateLimiter;
 use Civi\Warden\ProviderRepository;
 use Civi\Warden\Value;
 
@@ -42,6 +43,13 @@ final class LoginPage {
     if ($provider === NULL || !$provider->usable()) {
       Audit::record(Options::EVENT_LOGIN_DENIED, NULL, NULL, 'no_provider', 'login requested for an unusable provider');
       self::fail('This login option is not available.');
+    }
+
+    // Same limiter as the callback: every start is a discovery fetch and a
+    // session write, so an anonymous caller must not drive them at will.
+    if (!RateLimiter::allow()) {
+      Audit::record(Options::EVENT_RATE_LIMITED, $provider, NULL, 'too_many_failures', 'login rate limit reached');
+      self::fail('Too many failed sign-in attempts from your network. Please wait a few minutes and try again.');
     }
 
     $landing = Value::nullableStr(\CRM_Utils_Request::retrieveValue('land', 'String', NULL, FALSE, 'GET'));
