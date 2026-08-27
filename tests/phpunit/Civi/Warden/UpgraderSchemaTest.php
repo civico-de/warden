@@ -84,6 +84,48 @@ final class UpgraderSchemaTest extends TestCase implements HeadlessInterface {
     self::assertNotNull($failure, 'the unique issuer index must reject a second provider');
   }
 
+  public function testUpgradeNamesDuplicateIssuersInsteadOfFailingOnTheIndex(): void {
+    if ($this->issuerIndexExists()) {
+      \CRM_Core_DAO::executeQuery('DROP INDEX UI_issuer ON civicrm_warden_provider');
+    }
+    $issuer = 'https://twice-' . bin2hex(random_bytes(6)) . '.example.org';
+    $ids = [];
+    foreach (['one', 'two'] as $suffix) {
+      $row = WardenProvider::create(FALSE)
+        ->setValues([
+          'name' => 'twice_' . $suffix . '_' . bin2hex(random_bytes(4)),
+          'label' => 'Twice ' . $suffix,
+          'issuer' => $issuer,
+          'client_id' => 'client-' . $suffix,
+          'scopes' => 'openid',
+          'mode' => Options::MODE_OPTIONAL,
+          'allowed_algorithms' => 'RS256',
+          'is_active' => TRUE,
+        ])
+        ->execute()
+        ->single();
+      $ids[] = Value::int($row['id'] ?? NULL);
+    }
+
+    $reflection = new \ReflectionClass(\CRM_Warden_Upgrader::class);
+    /** @var \CRM_Warden_Upgrader $upgrader */
+    $upgrader = $reflection->newInstanceWithoutConstructor();
+    $failure = NULL;
+    try {
+      $upgrader->upgrade_0200();
+    }
+    catch (\CRM_Core_Exception $e) {
+      $failure = $e;
+    }
+    finally {
+      WardenProvider::delete(FALSE)->addWhere('id', 'IN', $ids)->execute();
+      self::assertTrue($upgrader->upgrade_0200());
+    }
+
+    self::assertNotNull($failure);
+    self::assertStringContainsString(implode(',', $ids) . ' share issuer ' . $issuer, $failure->getMessage());
+  }
+
   private function issuerIndexExists(): bool {
     $dao = \CRM_Core_DAO::executeQuery("SHOW INDEX FROM civicrm_warden_provider WHERE Key_name = 'UI_issuer'");
     if (!method_exists($dao, 'fetch')) {

@@ -21,6 +21,22 @@ final class CRM_Warden_Upgrader extends \CRM_Extension_Upgrader_Base {
     }
     // Logout tokens identify an issuer before their signature/audience can be
     // validated. One issuer must therefore resolve to exactly one local client.
+    $byIssuer = [];
+    foreach (\Civi\Api4\WardenProvider::get(FALSE)->addSelect('id', 'issuer')->addOrderBy('id')->execute() as $row) {
+      $row = \Civi\Warden\Value::row($row);
+      $byIssuer[\Civi\Warden\Value::str($row['issuer'] ?? NULL)][] = \Civi\Warden\Value::int($row['id'] ?? NULL);
+    }
+    $conflicts = [];
+    foreach ($byIssuer as $issuer => $ids) {
+      if (count($ids) > 1) {
+        $conflicts[] = sprintf('providers #%s share issuer %s', implode(',', $ids), $issuer);
+      }
+    }
+    if ($conflicts !== []) {
+      throw new \CRM_Core_Exception(
+        'warden 0.2 requires one provider per issuer; remove or merge the duplicates first: ' . implode('; ', $conflicts),
+      );
+    }
     \CRM_Warden_ExtensionUtil::schema()->createIndex(
       'civicrm_warden_provider',
       'UI_issuer',
