@@ -1,0 +1,116 @@
+# Disposable full-stack E2E environment: CiviCRM + Warden + a deterministic
+# Entra-compatible OIDC authority. The fixture uses Microsoft's tenant-scoped
+# v2 endpoint and claim shapes without requiring a real tenant or test account.
+name: warden-entra-e2e
+
+services:
+  certgen:
+    image: alpine:3.22
+    command: ["/bin/sh", "/certgen.sh"]
+    volumes:
+      - entra-certs:/certs
+      - ./entra/certgen.sh:/certgen.sh:ro
+
+  db:
+    image: mariadb:10.11
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: civicrm
+      MYSQL_USER: civicrm
+      MYSQL_PASSWORD: civicrm
+    volumes:
+      - e2e-db-data:/var/lib/mysql
+      - ./db-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  entra:
+    image: mcr.microsoft.com/playwright:v1.60.0-noble
+    depends_on:
+      certgen:
+        condition: service_completed_successfully
+    command: ["node", "/provider/server.mjs"]
+    environment:
+      ENTRA_TLS_CERT: /certs/entra.crt
+      ENTRA_TLS_KEY: /certs/entra.key
+      NODE_EXTRA_CA_CERTS: /certs/ca.crt
+    networks:
+      default:
+        aliases:
+          - login.microsoftonline.com
+    volumes:
+      - entra-certs:/certs:ro
+      - ../tests/e2e/entra/server.mjs:/provider/server.mjs:ro
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('https://login.microsoftonline.com/a0b1c2d3-1234-4567-89ab-0123456789cd/v2.0/.well-known/openid-configuration').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  app:
+    image: ${CIVIKITCHEN_IMAGE:-ghcr.io/jfilter/civikitchen:v1}
+    pull_policy: always
+    depends_on:
+      db:
+        condition: service_healthy
+      certgen:
+        condition: service_completed_successfully
+    environment:
+      CIVICRM_AUTO_INSTALL: "1"
+      CIVICRM_DB_HOST: db
+      CIVICRM_DB_NAME: civicrm
+      CIVICRM_DB_USER: civicrm
+      CIVICRM_DB_PASSWORD: civicrm
+      CIVIKITCHEN_SITE_URL: http://app
+      CIVIKITCHEN_ENABLE_EXTENSIONS: warden
+      SSL_CERT_FILE: /e2e-certs/ca.crt
+      CURL_CA_BUNDLE: /e2e-certs/ca.crt
+    volumes:
+      - ..:/var/www/html/ext/warden
+      - ./init.d:/civikitchen-init.d:ro
+      - entra-certs:/e2e-certs:ro
+    healthcheck:
+      test: ["CMD-SHELL", "cv ev 'if (!class_exists(\"Civi\\\\Api4\\\\WardenProvider\") || !CRM_Core_DAO::checkTableExists(\"civicrm_warden_session\")) { throw new RuntimeException(\"warden not ready\"); }' >/dev/null 2>&1 && curl --fail --silent --output /dev/null http://127.0.0.1/civicrm/login"]
+      interval: 5s
+      timeout: 10s
+      retries: 50
+      start_period: 30s
+
+  playwright:
+    image: mcr.microsoft.com/playwright:v1.60.0-noble
+    depends_on:
+      app:
+        condition: service_healthy
+      entra:
+        condition: service_healthy
+    working_dir: /tmp/warden-entra-e2e
+    environment:
+      HOME: /tmp/warden-playwright
+      NODE_EXTRA_CA_CERTS: /e2e-certs/ca.crt
+    volumes:
+      - ..:/repo:ro
+      - entra-certs:/e2e-certs:ro
+      - ../tests/e2e/entra/playwright-report:/tmp/warden-entra-e2e/playwright-report
+      - ../tests/e2e/entra/test-results:/tmp/warden-entra-e2e/test-results
+    command:
+      - /bin/bash
+      - -lc
+      - >-
+        cp /repo/tests/e2e/keycloak/package.json
+        /repo/tests/e2e/keycloak/package-lock.json
+        /repo/tests/e2e/entra/playwright.config.mjs
+        /repo/tests/e2e/entra/warden-entra.spec.mjs .
+        && npm ci --ignore-scripts
+        && npx playwright test warden-entra.spec.mjs
+    profiles: [test]
+
+volumes:
+  e2e-db-data:
+  entra-certs:

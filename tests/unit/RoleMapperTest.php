@@ -11,7 +11,10 @@ use Civi\Warden\Tests\Support\RoleMapperContract;
  *
  * @group unit
  * @covers \Civi\Warden\RoleMapper
+ * @covers \Civi\Warden\RoleClaimUnavailableException
  * @covers \Civi\Warden\Claims
+ * @covers \Civi\Warden\DistributedClaims
+ * @covers \Civi\Warden\Entra
  * @covers \Civi\Warden\Provider
  * @covers \Civi\Warden\Value
  */

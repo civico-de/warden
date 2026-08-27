@@ -39,7 +39,7 @@ $connection = static fn (): array => [
     'sql_type' => 'varchar(255)',
     'input_type' => 'Text',
     'required' => TRUE,
-    'description' => 'The OIDC issuer URL, e.g. https://id.example.org/realms/main. Discovery appends /.well-known/openid-configuration; the discovered `issuer` must match this string exactly.',
+    'description' => 'The OIDC issuer URL. Entra ID: https://login.microsoftonline.com/<tenant GUID>/v2.0. Discovery appends /.well-known/openid-configuration; the discovered `issuer` must match this string exactly.',
   ],
   'client_id' => [
     'title' => 'Client ID',
@@ -103,7 +103,7 @@ $provisioning = static fn (): array => [
     'title' => 'Claim to role map (JSON)',
     'sql_type' => 'text',
     'input_type' => 'TextArea',
-    'description' => 'JSON object: {"claim": "realm_access.roles", "map": {"crm-admin": ["admin"], "crm-staff": ["staff"]}}. Values on the right are CiviCRM role NAMES; permission strings are never accepted.',
+    'description' => 'JSON object. Entra App Roles: {"claim": "roles", "map": {"CiviCRM.Admin": ["admin"]}}. Keycloak: {"claim": "realm_access.roles", "map": {"crm-admin": ["admin"]}}. Values on the right are CiviCRM role NAMES; permission strings are never accepted.',
   ],
   'role_sync_mode' => [
     'title' => 'Role sync',

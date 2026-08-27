@@ -44,3 +44,17 @@ jobs:
         tests/e2e/keycloak/playwright-report/
         tests/e2e/keycloak/test-results/
       timeout_minutes: 25
+
+  entra-e2e:
+    name: Entra profile browser E2E
+    uses: jfilter/civikitchen/.github/workflows/playwright-e2e.yml@v1
+    with:
+      working_directory: .
+      cache_dependency_path: tests/e2e/keycloak/package-lock.json
+      install_command: composer install --no-interaction --no-progress
+      test_command: tests/e2e/entra/run.sh
+      cleanup_command: docker compose -f .docker/docker-compose.entra.yml down --volumes --remove-orphans
+      artifact_paths: |-
+        tests/e2e/entra/playwright-report/
+        tests/e2e/entra/test-results/
+      timeout_minutes: 25

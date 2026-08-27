@@ -291,6 +291,59 @@ final class ProvisioningHeadlessTest extends TestCase implements HeadlessInterfa
     self::assertNotContains($roleName, Users::roleNames($userId));
   }
 
+  public function testEntraGroupOverageRefusesProvisioningWithoutCreatingAUser(): void {
+    $provider = $this->provider([
+      'claim_role_map' => json_encode(['claim' => 'groups', 'map' => ['group-object-id' => ['staff']]]),
+      'role_sync_mode' => Options::ROLE_SYNC_EVERY_LOGIN,
+    ]);
+
+    $before = User::get(FALSE)->execute()->count();
+    try {
+      Provisioner::resolve($provider, $this->claims([
+        'sub' => 'entra-overage-new-user',
+        '_claim_names' => ['groups' => 'src1'],
+        '_claim_sources' => ['src1' => ['endpoint' => 'https://graph.microsoft.com/example']],
+      ]));
+      self::fail('a distributed group claim must refuse provisioning');
+    }
+    catch (\CRM_Core_Exception $e) {
+      self::assertStringContainsString('omitted the configured role claim', $e->getMessage());
+    }
+
+    self::assertCount($before, User::get(FALSE)->execute());
+    self::assertCount(
+      1,
+      WardenAudit::get(FALSE)->addWhere('reason', '=', 'role_claim_unavailable')->execute(),
+    );
+  }
+
+  public function testEntraGroupOverageRefusesExistingUserLoginWithoutRemovingRoles(): void {
+    $roleName = 'warden_entra_group_role';
+    $this->makeRole($roleName, 'Warden Entra group role');
+    $provider = $this->provider([
+      'claim_role_map' => json_encode(['claim' => 'groups', 'map' => ['group-object-id' => [$roleName]]]),
+      'role_sync_mode' => Options::ROLE_SYNC_EVERY_LOGIN,
+    ]);
+    $userId = Provisioner::resolve($provider, $this->claims([
+      'sub' => 'entra-overage-existing-user',
+      'groups' => ['group-object-id'],
+    ]));
+    self::assertContains($roleName, Users::roleNames($userId));
+
+    try {
+      Provisioner::resolve($provider, $this->claims([
+        'sub' => 'entra-overage-existing-user',
+        'hasgroups' => TRUE,
+      ]));
+      self::fail('an existing identity must not log in with indeterminate authoritative roles');
+    }
+    catch (\CRM_Core_Exception $e) {
+      self::assertStringContainsString('omitted the configured role claim', $e->getMessage());
+    }
+
+    self::assertContains($roleName, Users::roleNames($userId));
+  }
+
   public function testAClaimNamingAPermissionIsIgnoredEndToEnd(): void {
     $provider = $this->provider([
       'claim_role_map' => json_encode(['claim' => 'realm_access.roles', 'map' => []]),

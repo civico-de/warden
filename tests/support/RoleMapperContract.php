@@ -5,8 +5,11 @@ declare(strict_types = 1);
 namespace Civi\Warden\Tests\Support;
 
 use Civi\Warden\Claims;
+use Civi\Warden\DistributedClaims;
+use Civi\Warden\Entra;
 use Civi\Warden\Options;
 use Civi\Warden\Provider;
+use Civi\Warden\RoleClaimUnavailableException;
 use Civi\Warden\RoleMapper;
 use PHPUnit\Framework\TestCase;
 
@@ -104,6 +107,44 @@ abstract class RoleMapperContract extends TestCase {
     }
   }
 
+  public function testEntraAppRolesUseTheOrdinaryTopLevelClaim(): void {
+    $provider = $this->provider([
+      'claim_role_map' => json_encode([
+        'claim' => Entra::ROLE_CLAIM,
+        'map' => ['CiviCRM.Staff' => ['staff']],
+      ]),
+    ]);
+
+    self::assertSame(['staff'], RoleMapper::rolesFor($provider, ['roles' => ['CiviCRM.Staff']]));
+  }
+
+  public function testAGroupOverageMarkerIsNotMistakenForNoRoles(): void {
+    $provider = $this->provider([
+      'claim_role_map' => json_encode([
+        'claim' => 'groups',
+        'map' => ['group-object-id' => ['staff']],
+      ]),
+    ]);
+
+    $this->expectException(RoleClaimUnavailableException::class);
+    RoleMapper::rolesFor($provider, [
+      '_claim_names' => ['groups' => 'src1'],
+      '_claim_sources' => ['src1' => ['endpoint' => 'https://graph.microsoft.com/example']],
+    ]);
+  }
+
+  public function testTheHasgroupsOverageShapeIsAlsoRefused(): void {
+    $provider = $this->provider([
+      'claim_role_map' => json_encode([
+        'claim' => 'groups',
+        'map' => ['group-object-id' => ['staff']],
+      ]),
+    ]);
+
+    $this->expectException(RoleClaimUnavailableException::class);
+    RoleMapper::rolesFor($provider, ['hasgroups' => TRUE]);
+  }
+
   // --- Claims -----------------------------------------------------------
 
   public function testClaimsReadNestedPaths(): void {
@@ -120,6 +161,10 @@ abstract class RoleMapperContract extends TestCase {
     self::assertSame(['a'], Claims::stringList(['r' => 'a'], 'r'), 'single string');
     self::assertSame([], Claims::stringList(['r' => 5], 'r'), 'a number is not a role list');
     self::assertSame(['a'], Claims::stringList(['r' => ['a', 'a']], 'r'), 'deduplicated');
+  }
+
+  public function testARealGroupsClaimWinsOverTheHasgroupsMarker(): void {
+    self::assertFalse(DistributedClaims::unavailable(['groups' => ['group-a'], 'hasgroups' => TRUE], 'groups'));
   }
 
   // --- Provider parsing -------------------------------------------------
@@ -140,6 +185,23 @@ abstract class RoleMapperContract extends TestCase {
 
   public function testAProviderWithNoAlgorithmsIsNotUsable(): void {
     self::assertFalse($this->provider(['allowed_algorithms' => ''])->usable());
+  }
+
+  public function testEntraBuildsAndRecognisesOnlyTenantSpecificV2Issuers(): void {
+    $tenant = 'A0B1C2D3-1234-4567-89AB-0123456789CD';
+    $issuer = Entra::issuer($tenant);
+
+    self::assertSame('https://login.microsoftonline.com/a0b1c2d3-1234-4567-89ab-0123456789cd/v2.0', $issuer);
+    self::assertTrue(Entra::matches($issuer));
+    self::assertSame(strtolower($tenant), Entra::tenantId($issuer));
+    self::assertNull(Entra::tenantId('https://login.microsoftonline.com/common/v2.0'));
+    self::assertNull(Entra::tenantId($issuer . '/'));
+    self::assertFalse(Entra::matches('https://id.example.org/realms/main'));
+  }
+
+  public function testEntraRefusesANonGuidTenant(): void {
+    $this->expectException(\InvalidArgumentException::class);
+    Entra::issuer('common');
   }
 
   public function testADisabledProviderIsNotUsable(): void {

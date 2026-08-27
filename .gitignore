@@ -3,8 +3,8 @@
 /vendor/
 node_modules/
 /.ckrelease/
-tests/e2e/keycloak/playwright-report/
-tests/e2e/keycloak/test-results/
+tests/e2e/*/playwright-report/
+tests/e2e/*/test-results/
 
 # PHP tooling caches
 .phpunit.result.cache

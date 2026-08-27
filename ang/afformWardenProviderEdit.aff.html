@@ -5,6 +5,10 @@
       <div class="help">
         {{:: ts('The issuer is the base URL the provider publishes its configuration under — warden appends /.well-known/openid-configuration and refuses a document that declares a different issuer.') }}
       </div>
+      <div class="help">
+        <strong>{{:: ts('Provider profile - Microsoft Entra ID:') }}</strong>
+        {{:: ts('Use https://login.microsoftonline.com/&lt;Directory tenant ID&gt;/v2.0 (a tenant GUID; never common or organizations), register the callback as a Web redirect URI, and map Entra App Roles from the top-level roles claim. Warden does not expand Entra group-overage claims through Microsoft Graph and does not treat Entra email addresses as verified account-linking keys.') }}
+      </div>
     </div>
     <af-field name="label" />
     <af-field name="name" />
@@ -18,7 +22,7 @@
     <af-field name="link_policy" defn="{help_post: 'verified_email lets an unknown subject adopt an existing account. Only enable it if you trust the provider not to let users choose their own email claim.'}" />
     <af-field name="default_role_names" />
     <af-field name="role_sync_mode" />
-    <af-field name="claim_role_map" defn="{help_post: 'JSON, e.g. {\"claim\": \"realm_access.roles\", \"map\": {\"crm-admin\": [\"admin\"]}}. Values on the right are CiviCRM role names, never permission strings.'}" />
+    <af-field name="claim_role_map" defn="{help_post: 'JSON, e.g. Entra App Roles: {\"claim\": \"roles\", \"map\": {\"CiviCRM.Admin\": [\"admin\"]}}; Keycloak: {\"claim\": \"realm_access.roles\", \"map\": {\"crm-admin\": [\"admin\"]}}. Values on the right are CiviCRM role names, never permission strings.'}" />
     <af-field name="weight" />
     <af-field name="is_active" />
     <button class="af-button btn btn-primary" crm-icon="fa-check" ng-click="afform.submit()" ng-if="afform.showSubmitButton">{{:: ts('Save') }}</button>

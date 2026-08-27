@@ -18,12 +18,14 @@ use Symfony\Component\HttpClient\Response\MockResponse;
  *
  * @group headless
  * @covers \Civi\Warden\StatusCheck
+ * @covers \Civi\Warden\EntraStatusCheck
  * @covers \Civi\Warden\RedirectUri
  * @covers \Civi\Warden\Escape
  */
 final class StatusCheckHeadlessTest extends TestCase implements HeadlessInterface, TransactionalInterface {
 
   private const ISSUER = 'https://id.example.org/realms/main';
+  private const ENTRA_TENANT = 'a0b1c2d3-1234-4567-89ab-0123456789cd';
 
   public function setUpHeadless(): Test\CiviEnvBuilder {
     return Test::headless()
@@ -167,6 +169,43 @@ final class StatusCheckHeadlessTest extends TestCase implements HeadlessInterfac
     $this->stubHttp([$this->discoveryResponse()]);
 
     self::assertContains('warden_unknown_roles_' . $provider->id, $this->names());
+  }
+
+  public function testEntraCommonIssuerIsReportedBeforeDiscovery(): void {
+    $provider = $this->provider([
+      'issuer' => 'https://login.microsoftonline.com/common/v2.0',
+      'is_active' => FALSE,
+    ]);
+
+    self::assertContains('warden_entra_tenant_issuer_' . $provider->id, $this->names());
+  }
+
+  public function testEntraEmailLinkingAndGroupMappingAreReported(): void {
+    $issuer = Entra::issuer(self::ENTRA_TENANT);
+    $provider = $this->provider([
+      'issuer' => $issuer,
+      'link_policy' => Options::LINK_VERIFIED_EMAIL,
+      'claim_role_map' => json_encode(['claim' => 'groups', 'map' => []]),
+      'is_active' => FALSE,
+    ]);
+    $names = $this->names();
+
+    self::assertContains('warden_entra_email_link_' . $provider->id, $names);
+    self::assertContains('warden_entra_groups_' . $provider->id, $names);
+  }
+
+  public function testARecommendedEntraConfigurationHasNoEntraWarning(): void {
+    $issuer = Entra::issuer(self::ENTRA_TENANT);
+    $provider = $this->provider([
+      'issuer' => $issuer,
+      'claim_role_map' => json_encode(['claim' => Entra::ROLE_CLAIM, 'map' => []]),
+      'link_policy' => Options::LINK_NEVER,
+      'is_active' => FALSE,
+    ]);
+
+    foreach ($this->names() as $name) {
+      self::assertStringNotContainsString('warden_entra_', $name, 'unexpected Entra warning for provider ' . $provider->id);
+    }
   }
 
   public function testTheRedirectUriIsCheckedAgainstTheBaseUrl(): void {

@@ -176,6 +176,7 @@ final class Provisioner {
   // As above: the flag qualifies the email beside it.
   private static function create(Provider $provider, IdTokenClaims $claims, ?string $email, bool $emailVerified): int {
     $subject = $claims->subject;
+    $mappedRoles = self::mappedRoles($provider, $claims, NULL);
 
     // The username has to be stable and unique. `preferred_username` is
     // neither — two people can hold the same one over time — so it is used
@@ -194,7 +195,7 @@ final class Provisioner {
       // would let the IdP put an arbitrary address on a CiviCRM contact.
       $emailVerified ? $email : NULL,
       Value::nullableStr($claims->claim('name')),
-      RoleMapper::apply($provider, $provider->defaultRoleNames, RoleMapper::rolesFor($provider, $claims->all)),
+      RoleMapper::apply($provider, $provider->defaultRoleNames, $mappedRoles),
     );
 
     self::link($provider, $userId, $subject);
@@ -269,12 +270,15 @@ final class Provisioner {
 
     try {
       $current = Users::roleNames($userId);
-      $target = RoleMapper::apply($provider, $current, RoleMapper::rolesFor($provider, $claims->all));
+      $target = RoleMapper::apply($provider, $current, self::mappedRoles($provider, $claims, $userId));
       sort($current);
       sort($target);
       if ($current !== $target) {
         Users::setRoles($userId, $target);
       }
+    }
+    catch (\CRM_Core_Exception $e) {
+      throw $e;
     }
     catch (\Throwable $e) {
       // A role sync failure must not silently grant the login the roles it
@@ -289,6 +293,43 @@ final class Provisioner {
         $userId,
         'role_sync_failed',
         substr($e->getMessage(), 0, 200),
+      );
+
+      throw new \CRM_Core_Exception(
+        'Your identity provider roles could not be applied. Access was refused; ask an administrator to check the warden log.',
+        0,
+        [],
+        $e,
+      );
+    }
+  }
+
+  /**
+   * Resolve the authoritative role input, refusing distributed/overage claims.
+   *
+   * @return list<string>
+   *
+   * @throws \CRM_Core_Exception
+   */
+  private static function mappedRoles(Provider $provider, IdTokenClaims $claims, ?int $userId): array {
+    try {
+      return RoleMapper::rolesFor($provider, $claims->all);
+    }
+    catch (RoleClaimUnavailableException $e) {
+      Audit::record(
+        Options::EVENT_LOGIN_DENIED,
+        $provider,
+        $userId,
+        'role_claim_unavailable',
+        substr($e->getMessage(), 0, 200),
+        $claims->subject,
+      );
+
+      throw new \CRM_Core_Exception(
+        'Your identity provider omitted the configured role claim because it was too large for the login token. Access was refused; ask an administrator to use application roles or reduce the emitted groups.',
+        0,
+        [],
+        $e,
       );
     }
   }

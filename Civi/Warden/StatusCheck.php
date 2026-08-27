@@ -225,6 +225,10 @@ final class StatusCheck {
       );
     }
 
+    foreach (EntraStatusCheck::messages($provider) as $message) {
+      $messages[] = $message;
+    }
+
     if (!$provider->usable()) {
       return $messages;
     }

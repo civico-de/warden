@@ -34,6 +34,12 @@ final class RoleMapper {
     if ($provider->roleClaim === '' || $provider->roleMap === []) {
       return [];
     }
+    if (DistributedClaims::unavailable($claims, $provider->roleClaim)) {
+      throw new RoleClaimUnavailableException(sprintf(
+        'The configured role claim "%s" is not present in this token because the provider returned an overage marker.',
+        $provider->roleClaim,
+      ));
+    }
 
     $granted = [];
     foreach (Claims::stringList($claims, $provider->roleClaim) as $value) {
