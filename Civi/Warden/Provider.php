@@ -40,6 +40,7 @@ final class Provider {
     public readonly string $linkPolicy,
     public readonly array $defaultRoleNames,
     public readonly bool $isActive,
+    public readonly bool $secretUnreadable,
   ) {}
 
   /**
@@ -48,6 +49,7 @@ final class Provider {
    */
   public static function fromArray(array $row): self {
     $map = self::decodeRoleMap($row['claim_role_map'] ?? NULL);
+    $secret = Secret::reveal(Value::nullableStr($row['client_secret'] ?? NULL));
 
     return new self(
       Value::int($row['id'] ?? NULL),
@@ -55,7 +57,7 @@ final class Provider {
       Value::str($row['label'] ?? NULL),
       Value::str($row['issuer'] ?? NULL),
       Value::str($row['client_id'] ?? NULL),
-      Secret::reveal(Value::nullableStr($row['client_secret'] ?? NULL)),
+      $secret ?? '',
       self::normaliseScopes($row['scopes'] ?? NULL),
       Value::str($row['mode'] ?? NULL, Options::MODE_DISABLED),
       self::parseAlgorithms(Value::str($row['allowed_algorithms'] ?? NULL, 'RS256')),
@@ -66,6 +68,7 @@ final class Provider {
       Value::str($row['link_policy'] ?? NULL, Options::LINK_NEVER),
       self::words($row['default_role_names'] ?? NULL),
       Value::bool($row['is_active'] ?? NULL),
+      $secret === NULL,
     );
   }
 
@@ -87,6 +90,7 @@ final class Provider {
       && $this->issuer !== ''
       && $this->clientId !== ''
       && $this->allowedAlgorithms !== []
+      && !$this->secretUnreadable
     );
   }
 

@@ -77,11 +77,12 @@ final class Secret {
   /**
    * Decrypt a stored client secret.
    *
-   * Reading stays tolerant: a site that lost its key after a bad restore must
-   * still be able to open the provider screen and see what is wrong, and rows
-   * written before this rule existed must not become unreadable.
+   * NULL means a secret is stored but cannot be read (key lost after a bad
+   * restore, rotated CIVICRM_CRED_KEYS). Reading does not throw so the
+   * provider screen and the status check still open; the caller decides that
+   * such a provider is unusable rather than silently a public client.
    */
-  public static function reveal(?string $stored): string {
+  public static function reveal(?string $stored): ?string {
     if ($stored === NULL || $stored === '') {
       return '';
     }
@@ -90,7 +91,7 @@ final class Secret {
       return Value::str(self::token()->decrypt($stored, ['CRED', 'plain']));
     }
     catch (\Throwable) {
-      return '';
+      return NULL;
     }
   }
 

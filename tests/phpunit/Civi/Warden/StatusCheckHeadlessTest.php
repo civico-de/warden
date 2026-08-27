@@ -102,6 +102,20 @@ final class StatusCheckHeadlessTest extends TestCase implements HeadlessInterfac
     return $out;
   }
 
+  public function testAnUndecryptableSecretSwitchesTheProviderOff(): void {
+    // A CryptoToken wrapper naming a key this site does not have.
+    $stored = chr(2) . 'CTK?k=lost-key&t=CRED' . chr(2) . 'ciphertext';
+    self::assertNull(Secret::reveal($stored));
+
+    $provider = $this->provider(['client_secret' => $stored]);
+    $this->stubHttp([$this->discoveryResponse()]);
+
+    self::assertTrue($provider->secretUnreadable);
+    self::assertSame('', $provider->clientSecret);
+    self::assertFalse($provider->usable(), 'an unreadable secret must not degrade to a public client');
+    self::assertContains('warden_unreadable_secret_' . $provider->id, $this->names());
+  }
+
   public function testAnUnreachableProviderIsReported(): void {
     $provider = $this->provider();
     $this->stubHttp([new MockResponse('down', ['http_code' => 500])]);
