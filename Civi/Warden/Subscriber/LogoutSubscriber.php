@@ -66,7 +66,9 @@ final class LogoutSubscriber extends AutoSubscriber {
         SessionRegistry::clearCurrent();
       }
       catch (\Throwable $e) {
-        \Civi::log()->warning('warden: could not clear the session binding on logout: {msg}', ['msg' => $e->getMessage()]);
+        \Civi::log()->warning('warden: could not clear the session binding on logout: {msg}', [
+          'msg' => $e->getMessage(),
+        ]);
       }
     }
   }

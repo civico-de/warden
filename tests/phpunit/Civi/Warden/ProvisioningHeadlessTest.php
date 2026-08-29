@@ -15,6 +15,8 @@ use Civi\Test\TransactionalInterface;
 use Civi\Warden\Tests\Support\JwtFixture;
 use PHPUnit\Framework\TestCase;
 
+// @mago-expect lint:cyclomatic-complexity
+// Independent provisioning security scenarios accumulate at class scope.
 /**
  * Provisioning, linking and the relink refusal, against real rows.
  *
@@ -23,6 +25,7 @@ use PHPUnit\Framework\TestCase;
  * @covers \Civi\Warden\Users
  * @covers \Civi\Warden\Audit
  * @covers \Civi\Warden\ProviderRepository
+ * @covers \Civi\Warden\Random
  */
 final class ProvisioningHeadlessTest extends TestCase implements HeadlessInterface, TransactionalInterface {
 
@@ -162,7 +165,11 @@ final class ProvisioningHeadlessTest extends TestCase implements HeadlessInterfa
     }
 
     self::assertNotNull($threw);
-    self::assertSame($contacts, \Civi\Api4\Contact::get(FALSE)->selectRowCount()->execute()->countMatched(), 'no stranded contact');
+    self::assertSame(
+      $contacts,
+      \Civi\Api4\Contact::get(FALSE)->selectRowCount()->execute()->countMatched(),
+      'no stranded contact',
+    );
     self::assertSame($users, User::get(FALSE)->selectRowCount()->execute()->countMatched(), 'no stranded user');
     self::assertCount(0, WardenIdentity::get(FALSE)->addWhere('subject', '=', 'subject-clash')->execute());
     self::assertCount(
@@ -181,7 +188,15 @@ final class ProvisioningHeadlessTest extends TestCase implements HeadlessInterfa
     $userB = Provisioner::resolve($b, $this->claims($claims + ['email' => 'b@example.org']));
 
     self::assertNotSame($userA, $userB);
-    $names = User::get(FALSE)->addSelect('username')->addWhere('id', 'IN', [$userA, $userB])->execute()->column('username');
+    $names = [];
+    foreach (User::get(FALSE)
+      ->addSelect('username')
+      ->addWhere('id', 'IN', [$userA, $userB])
+      ->execute()
+      ->column('username') as $name) {
+      self::assertIsString($name);
+      $names[] = $name;
+    }
     self::assertCount(2, array_unique($names));
     foreach ($names as $name) {
       self::assertStringStartsWith('same.person-', $name);
@@ -195,7 +210,10 @@ final class ProvisioningHeadlessTest extends TestCase implements HeadlessInterfa
       'preferred_username' => str_repeat('a', 80),
     ]));
 
-    $username = User::get(FALSE)->addSelect('username')->addWhere('id', '=', $userId)->execute()->single()['username'];
+    $row = User::get(FALSE)->addSelect('username')->addWhere('id', '=', $userId)->execute()->single();
+    self::assertIsArray($row);
+    self::assertIsString($row['username'] ?? NULL);
+    $username = $row['username'];
     self::assertSame(60, strlen($username));
     self::assertMatchesRegularExpression('/^a{47}-[0-9a-f]{12}$/', $username);
   }
@@ -433,6 +451,32 @@ final class ProvisioningHeadlessTest extends TestCase implements HeadlessInterfa
       Users::hasPermission($userId, 'administer CiviCRM'),
       'a claim naming a permission must never grant it',
     );
+  }
+
+  public function testTheUserFacadeHandlesLookupAndRoleConfigurationEdges(): void {
+    $userId = $this->makeUser('facade@example.org');
+    $this->makeRole('facade_active', 'Facade active role');
+    Role::create(FALSE)
+      ->addValue('name', 'facade_inactive')
+      ->addValue('label', 'Facade inactive role')
+      ->addValue('is_active', FALSE)
+      ->addValue('permissions', [])
+      ->execute();
+
+    self::assertSame($userId, Users::find($userId)['id'] ?? NULL);
+    self::assertNull(Users::find(999_999_999));
+    self::assertSame($userId, Users::findByEmail('facade@example.org')['id'] ?? NULL);
+    self::assertNull(Users::findByEmail(''));
+    self::assertSame([], Users::resolveRoleIds([]));
+    self::assertSame([], Users::unknownRoleNames([]));
+    self::assertSame(
+      ['facade_missing'],
+      Users::unknownRoleNames(['facade_active', 'facade_inactive', 'facade_missing']),
+      'inactive roles are known configuration but cannot be assigned',
+    );
+
+    Users::setRoles($userId, ['facade_active', 'facade_inactive', 'facade_missing']);
+    self::assertSame(['facade_active'], Users::roleNames($userId));
   }
 
   private function makeRole(string $name, string $label): void {

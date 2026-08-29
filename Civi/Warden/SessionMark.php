@@ -23,6 +23,8 @@ final class SessionMark {
 
   private const SCOPE = 'warden';
   private const KEY = 'provider_id';
+  // Session key name, not a credential or token value.
+  // @mago-expect lint:no-literal-password
   private const KEY_ID_TOKEN = 'id_token';
   private const KEY_LOGOUT_HINT = 'logout_hint';
 

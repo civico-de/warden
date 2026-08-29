@@ -217,7 +217,13 @@ final class LoginFlow {
     // Mix-up defence (RFC 9207): a response that names an issuer must name
     // the one this state was minted for.
     if ($issuer !== NULL && $issuer !== $provider->issuerForComparison()) {
-      Audit::record(Options::EVENT_LOGIN_FAILURE, $provider, NULL, 'issuer_mismatch', 'iss parameter names another issuer');
+      Audit::record(
+        Options::EVENT_LOGIN_FAILURE,
+        $provider,
+        NULL,
+        'issuer_mismatch',
+        'iss parameter names another issuer',
+      );
 
       throw new \CRM_Core_Exception('This sign-in response did not come from the expected identity provider.');
     }
@@ -234,7 +240,13 @@ final class LoginFlow {
    *
    * @throws \CRM_Core_Exception
    */
-  public function establishSession(Provider $provider, int $userId, IdTokenClaims $claims, string $idToken, ?string $logoutHint = NULL): void {
+  public function establishSession(
+    Provider $provider,
+    int $userId,
+    IdTokenClaims $claims,
+    string $idToken,
+    ?string $logoutHint = NULL,
+  ): void {
     if (!function_exists('authx_login')) {
       throw new \CRM_Core_Exception('warden needs the authx extension, which is not enabled.');
     }
@@ -281,7 +293,13 @@ final class LoginFlow {
     catch (\Throwable $e) {
       // A login without its revocation binding would silently promise single
       // logout and then ignore it. Roll the just-created session back instead.
-      Audit::record(Options::EVENT_LOGIN_FAILURE, $provider, $userId, 'session_binding_failed', substr($e->getMessage(), 0, 200));
+      Audit::record(
+        Options::EVENT_LOGIN_FAILURE,
+        $provider,
+        $userId,
+        'session_binding_failed',
+        substr($e->getMessage(), 0, 200),
+      );
       SessionMark::clear();
       if (function_exists('_authx_uf')) {
         _authx_uf()->logoutSession();

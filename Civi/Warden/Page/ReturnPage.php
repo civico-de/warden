@@ -75,7 +75,13 @@ final class ReturnPage {
     // Doing this earlier would invalidate the state binding above — see the
     // ordering note on LoginFlow.
     try {
-      $flow->establishSession($result['provider'], $result['userId'], $result['claims'], $result['idToken'], $result['logoutHint']);
+      $flow->establishSession(
+        $result['provider'],
+        $result['userId'],
+        $result['claims'],
+        $result['idToken'],
+        $result['logoutHint'],
+      );
     }
     catch (\CRM_Core_Exception $e) {
       self::fail($e->getMessage());

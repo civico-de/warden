@@ -189,9 +189,12 @@ final class StatusCheck {
     if ($provider->secretUnreadable) {
       $messages[] = new \CRM_Utils_Check_Message(
         'warden_unreadable_secret_' . $provider->id,
-        E::ts('The client secret for provider "%1" cannot be decrypted with the current CIVICRM_CRED_KEYS, so the provider is switched off. Restore the key or save the provider again with its secret.', [
-          1 => $provider->name,
-        ]),
+        E::ts(
+          'The client secret for provider "%1" cannot be decrypted with the current CIVICRM_CRED_KEYS, so the provider is switched off. Restore the key or save the provider again with its secret.',
+          [
+            1 => $provider->name,
+          ],
+        ),
         E::ts('warden: unreadable client secret'),
         \Psr\Log\LogLevel::CRITICAL,
         'fa-key',

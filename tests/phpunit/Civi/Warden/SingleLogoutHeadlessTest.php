@@ -6,6 +6,7 @@ namespace Civi\Warden;
 
 use Civi\Api4\Contact;
 use Civi\Api4\User;
+use Civi\Api4\Warden;
 use Civi\Api4\WardenAudit;
 use Civi\Api4\WardenProvider;
 use Civi\Api4\WardenSession;
@@ -27,6 +28,8 @@ use Symfony\Component\HttpClient\Response\MockResponse;
  * @covers \Civi\Warden\BackchannelLogout
  * @covers \Civi\Warden\SessionRegistry
  * @covers \Civi\Warden\Subscriber\SessionRevocationSubscriber
+ * @covers \Civi\Api4\Action\Warden\Prune
+ * @covers \Civi\Api4\Warden
  */
 final class SingleLogoutHeadlessTest extends TestCase implements HeadlessInterface, TransactionalInterface {
 
@@ -370,6 +373,48 @@ final class SingleLogoutHeadlessTest extends TestCase implements HeadlessInterfa
 
     self::assertSame(0, $result['sessions_deleted']);
     self::assertCount(1, WardenSession::get(FALSE)->execute());
+  }
+
+  public function testTheMaintenanceApiPrunesAuditAndSessionsWithIndependentOverrides(): void {
+    $provider = $this->provider();
+    $this->register($provider, $this->user(), 'local-stale', 'sid-stale');
+    $audit = WardenAudit::create(FALSE)
+      ->addValue('event', Options::EVENT_LOGIN_SUCCESS)
+      ->addValue('reason', 'stale-maintenance-test')
+      ->execute()
+      ->single();
+    $session = WardenSession::get(FALSE)->execute()->single();
+    \CRM_Core_DAO::executeQuery(
+      'UPDATE civicrm_warden_audit SET created_date = DATE_SUB(NOW(), INTERVAL 10 DAY) WHERE id = %1',
+      [1 => [$audit['id'], 'Integer']],
+    );
+    \CRM_Core_DAO::executeQuery(
+      'UPDATE civicrm_warden_session SET last_seen_date = DATE_SUB(NOW(), INTERVAL 20 DAY) WHERE id = %1',
+      [1 => [$session['id'], 'Integer']],
+    );
+
+    $result = Warden::prune(FALSE)
+      ->setDays(5)
+      ->setSessionDays(15)
+      ->execute()
+      ->single();
+
+    self::assertSame(2, $result['deleted']);
+    self::assertSame(1, $result['audit_deleted']);
+    self::assertSame(1, $result['sessions_deleted']);
+    self::assertCount(0, WardenAudit::get(FALSE)->addWhere('id', '=', $audit['id'])->execute());
+    self::assertCount(0, WardenSession::get(FALSE)->addWhere('id', '=', $session['id'])->execute());
+  }
+
+  public function testTheMaintenanceApiDeclaresItsPermissionAndNoEntityFields(): void {
+    self::assertSame(
+      [
+        'meta' => ['access CiviCRM'],
+        'default' => ['administer warden'],
+      ],
+      Warden::permissions(),
+    );
+    self::assertCount(0, Warden::getFields(FALSE)->execute());
   }
 
 }

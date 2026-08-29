@@ -5,9 +5,11 @@ declare(strict_types = 1);
 namespace Civi\Warden;
 
 use Civi\Api4\WardenProvider;
+use Civi\Core\Event\GenericHookEvent;
 use Civi\Test;
 use Civi\Test\HeadlessInterface;
 use Civi\Test\TransactionalInterface;
+use Civi\Warden\Subscriber\LogoutSubscriber;
 use Civi\Warden\Tests\Support\JwtFixture;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpClient\MockHttpClient;
@@ -21,6 +23,8 @@ use Symfony\Component\HttpClient\Response\MockResponse;
  * @covers \Civi\Warden\OidcClient
  * @covers \Civi\Warden\Cache
  * @covers \Civi\Warden\Http
+ * @covers \Civi\Warden\SessionMark
+ * @covers \Civi\Warden\Subscriber\LogoutSubscriber
  */
 final class DiscoveryHeadlessTest extends TestCase implements HeadlessInterface, TransactionalInterface {
 
@@ -195,6 +199,97 @@ final class DiscoveryHeadlessTest extends TestCase implements HeadlessInterface,
 
     \CRM_Core_Session::singleton()->set('provider_id', 99_999_999, 'warden');
     SessionMark::captureEndSession();
+    self::assertNull(SessionMark::pendingEndSession());
+  }
+
+  public function testLogoutSubscriberCapturesTheProviderLogoutAndReplacesOnlyTheLogoutRedirect(): void {
+    $provider = $this->provider();
+    Http::setClient(new MockHttpClient([$this->discovery()]));
+    SessionMark::set($provider, 'signed-id-token', 'user@example.org');
+
+    LogoutSubscriber::onInvoke(GenericHookEvent::create([
+      'args' => [0 => 'civicrm', 1 => 'logout'],
+    ]));
+
+    $endSession = SessionMark::pendingEndSession();
+    self::assertNotNull($endSession);
+
+    LogoutSubscriber::onRedirect(GenericHookEvent::create(['url' => 'not-a-uri-object']));
+    self::assertSame($endSession, SessionMark::pendingEndSession());
+
+    $unrelated = \CRM_Utils_Url::parseUrl('https://site.example.org/civicrm/dashboard');
+    LogoutSubscriber::onRedirect(GenericHookEvent::create(['url' => $unrelated]));
+    self::assertSame($endSession, SessionMark::pendingEndSession());
+
+    $captured = NULL;
+    $listener = static function ($event) use (&$captured): void {
+      /** @var object{url: \Psr\Http\Message\UriInterface} $event */
+      $captured = \CRM_Utils_Url::unparseUrl($event->url);
+      throw new RedirectCaptured();
+    };
+    \Civi::dispatcher()->addListener('hook_civicrm_alterRedirect', $listener, 9999);
+    try {
+      $login = \CRM_Utils_Url::parseUrl('https://site.example.org/civicrm/login');
+      LogoutSubscriber::onRedirect(GenericHookEvent::create(['url' => $login]));
+      self::fail('the provider logout should replace core\'s local login redirect');
+    }
+    // @mago-expect lint:no-empty-catch-clause
+    catch (RedirectCaptured) {
+      // Expected: stop before civiExit(), like the public route tests do.
+    }
+    finally {
+      \Civi::dispatcher()->removeListener('hook_civicrm_alterRedirect', $listener);
+    }
+
+    self::assertSame($endSession, $captured);
+    self::assertNull(SessionMark::pendingEndSession());
+  }
+
+  public function testLogoutSubscriberIsInertOutsideTheLogoutRouteAndWhenWardenIsOff(): void {
+    $provider = $this->provider();
+    Http::setClient(new MockHttpClient([$this->discovery()]));
+    SessionMark::set($provider, 'signed-id-token');
+
+    LogoutSubscriber::onInvoke(GenericHookEvent::create([]));
+    self::assertNull(SessionMark::pendingEndSession());
+
+    LogoutSubscriber::onInvoke(GenericHookEvent::create([
+      'args' => [0 => 'civicrm', 1 => 'dashboard'],
+    ]));
+    self::assertNull(SessionMark::pendingEndSession());
+
+    \Civi::settings()->set('warden_enabled', FALSE);
+    LogoutSubscriber::onInvoke(GenericHookEvent::create([
+      'args' => [0 => 'civicrm', 1 => 'logout'],
+    ]));
+    self::assertNull(SessionMark::pendingEndSession());
+    \Civi::settings()->set('warden_enabled', TRUE);
+  }
+
+  public function testLogoutSubscriberDeclaresBothSidesOfTheLogoutBoundary(): void {
+    self::assertSame(
+      [
+        'civi.invoke.auth' => ['onInvoke', 0],
+        'hook_civicrm_alterRedirect' => ['onRedirect', 0],
+      ],
+      LogoutSubscriber::getSubscribedEvents(),
+    );
+
+    LogoutSubscriber::onRedirect(GenericHookEvent::create([]));
+    self::assertNull(SessionMark::pendingEndSession());
+  }
+
+  public function testAProviderFailureNeverInterruptsLocalLogout(): void {
+    $provider = $this->provider();
+    Http::setClient(new MockHttpClient([
+      new MockResponse('provider unavailable', ['http_code' => 500]),
+    ]));
+    SessionMark::set($provider, 'signed-id-token');
+
+    LogoutSubscriber::onInvoke(GenericHookEvent::create([
+      'args' => [0 => 'civicrm', 1 => 'logout'],
+    ]));
+
     self::assertNull(SessionMark::pendingEndSession());
   }
 

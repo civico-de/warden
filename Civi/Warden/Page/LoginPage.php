@@ -9,8 +9,8 @@ use Civi\Warden\Escape;
 use Civi\Warden\LandingUrl;
 use Civi\Warden\LoginFlow;
 use Civi\Warden\Options;
-use Civi\Warden\RateLimiter;
 use Civi\Warden\ProviderRepository;
+use Civi\Warden\RateLimiter;
 use Civi\Warden\Value;
 
 /**

@@ -7,11 +7,13 @@ namespace Civi\Warden;
 use Civi\Api4\Role;
 use Civi\Api4\User;
 use Civi\Api4\WardenProvider;
+use Civi\API\Event\AuthorizeEvent;
 use Civi\Core\Event\GenericHookEvent;
 use Civi\Standalone\Event\LoginEvent;
 use Civi\Test;
 use Civi\Test\HeadlessInterface;
 use Civi\Test\TransactionalInterface;
+use Civi\Warden\Subscriber\LoginScreenSubscriber;
 use Civi\Warden\Subscriber\PasswordLoginSubscriber;
 use PHPUnit\Framework\TestCase;
 
@@ -21,6 +23,7 @@ use PHPUnit\Framework\TestCase;
  *
  * @group headless
  * @covers \Civi\Warden\Subscriber\PasswordLoginSubscriber
+ * @covers \Civi\Warden\Subscriber\LoginScreenSubscriber
  * @covers \Civi\Warden\Escape
  * @covers \Civi\Warden\ProviderRepository
  */
@@ -77,6 +80,18 @@ final class ModeEnforcementHeadlessTest extends TestCase implements HeadlessInte
    */
   private function loginEvent(string $stage, ?int $userId): LoginEvent {
     return new LoginEvent($stage, $userId);
+  }
+
+  /**
+   * @param array<string, mixed> $request
+   */
+  private function authorizeEvent(array $request): AuthorizeEvent {
+    return new AuthorizeEvent(
+      $this->createMock(\Civi\API\Provider\ProviderInterface::class),
+      $request,
+      $this->createMock(\Civi\API\Kernel::class),
+      0,
+    );
   }
 
   // --- Layer 1: civi.standalone.login -----------------------------------
@@ -177,6 +192,51 @@ final class ModeEnforcementHeadlessTest extends TestCase implements HeadlessInte
     self::assertSame('loginPrevented', $event->stopReason);
   }
 
+  public function testPasswordResetApiIsDeniedWhenTheAdministratorExemptionIsOff(): void {
+    $this->requireSso();
+    \Civi::settings()->set('warden_protect_admin_password_login', FALSE);
+    $event = $this->authorizeEvent([
+      'entity' => 'User',
+      'action' => 'passwordReset',
+    ]);
+
+    PasswordLoginSubscriber::onApiAuthorize($event);
+
+    self::assertFalse($event->isAuthorized());
+    self::assertTrue($event->isPropagationStopped());
+    self::assertCount(
+      1,
+      \Civi\Api4\WardenAudit::get(FALSE)->addWhere('reason', '=', 'password_reset_blocked')->execute(),
+    );
+  }
+
+  public function testPasswordResetApiKeepsTheAdministratorEscapeHatch(): void {
+    $this->requireSso();
+    $event = $this->authorizeEvent([
+      'entity' => 'User',
+      'action' => 'PASSWORDRESET',
+    ]);
+
+    PasswordLoginSubscriber::onApiAuthorize($event);
+
+    self::assertNull($event->isAuthorized());
+    self::assertFalse($event->isPropagationStopped());
+  }
+
+  public function testApiAuthorizationLeavesUnrelatedActionsAlone(): void {
+    $this->requireSso();
+    \Civi::settings()->set('warden_protect_admin_password_login', FALSE);
+    $event = $this->authorizeEvent([
+      'entity' => 'Contact',
+      'action' => 'get',
+    ]);
+
+    PasswordLoginSubscriber::onApiAuthorize($event);
+
+    self::assertNull($event->isAuthorized());
+    self::assertFalse($event->isPropagationStopped());
+  }
+
   public function testAnUnknownUsernameIsStillDenied(): void {
     // userID is NULL when the username matched nothing. Exempting that case
     // would turn `required` mode off for anyone typing a wrong username.
@@ -255,6 +315,68 @@ final class ModeEnforcementHeadlessTest extends TestCase implements HeadlessInte
     self::assertFalse(ProviderRepository::requiredModeActive());
   }
 
+  public function testProviderLookupsKeepIssuerMatchingExact(): void {
+    $created = WardenProvider::create(FALSE)
+      ->setValues([
+        'name' => 'lookup_idp',
+        'label' => 'Lookup IdP',
+        'issuer' => 'https://id.example.org/CaseSensitive',
+        'client_id' => 'civicrm',
+        'scopes' => 'openid',
+        'mode' => Options::MODE_OPTIONAL,
+        'allowed_algorithms' => 'RS256',
+        'is_active' => TRUE,
+      ])
+      ->execute()
+      ->single();
+    self::assertIsArray($created);
+    self::assertIsInt($created['id'] ?? NULL);
+
+    self::assertSame($created['id'], ProviderRepository::findByName('lookup_idp')?->id);
+    self::assertNull(ProviderRepository::findByName('missing_idp'));
+    self::assertSame(
+      $created['id'],
+      ProviderRepository::findByIssuer('https://id.example.org/CaseSensitive')?->id,
+    );
+    self::assertNull(
+      ProviderRepository::findByIssuer('https://id.example.org/casesensitive'),
+      'a case-insensitive database collation must not weaken exact OIDC issuer matching',
+    );
+    self::assertNull(ProviderRepository::findByIssuer('https://missing.example.org'));
+  }
+
+  public function testProviderListsUseWeightOrderAndExcludeDisabledModes(): void {
+    foreach ([
+      ['name' => 'later_idp', 'weight' => 20, 'mode' => Options::MODE_OPTIONAL],
+      ['name' => 'first_idp', 'weight' => 10, 'mode' => Options::MODE_REQUIRED],
+      ['name' => 'disabled_idp', 'weight' => 0, 'mode' => Options::MODE_DISABLED],
+    ] as $row) {
+      WardenProvider::create(FALSE)
+        ->setValues([
+          'name' => $row['name'],
+          'label' => $row['name'],
+          'issuer' => 'https://' . $row['name'] . '.example.org',
+          'client_id' => 'civicrm',
+          'scopes' => 'openid',
+          'mode' => $row['mode'],
+          'allowed_algorithms' => 'RS256',
+          'is_active' => TRUE,
+          'weight' => $row['weight'],
+        ])
+        ->execute();
+    }
+
+    self::assertSame(
+      ['disabled_idp', 'first_idp', 'later_idp'],
+      array_map(static fn (Provider $provider): string => $provider->name, ProviderRepository::all()),
+    );
+    self::assertSame(
+      ['first_idp', 'later_idp'],
+      array_map(static fn (Provider $provider): string => $provider->name, ProviderRepository::usable()),
+    );
+    self::assertTrue(ProviderRepository::requiredModeActive());
+  }
+
   // --- Registration ------------------------------------------------------
 
   /**
@@ -276,6 +398,21 @@ final class ModeEnforcementHeadlessTest extends TestCase implements HeadlessInte
       'loginPrevented',
       $event->stopReason,
       'warden did not react to a dispatched civi.standalone.login — the subscriber is not registered',
+    );
+  }
+
+  public function testLoginSubscribersDeclareEveryEnforcementBoundary(): void {
+    self::assertSame(
+      [
+        'civi.standalone.login' => ['onLogin', 0],
+        'civi.standalone.checkPassword' => ['onCheckPassword', 0],
+        'civi.api.authorize' => ['onApiAuthorize', 0],
+      ],
+      PasswordLoginSubscriber::getSubscribedEvents(),
+    );
+    self::assertSame(
+      ['hook_civicrm_pageRun' => 'onPageRun'],
+      LoginScreenSubscriber::getSubscribedEvents(),
     );
   }
 

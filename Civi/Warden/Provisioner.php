@@ -43,7 +43,14 @@ final class Provisioner {
       // account would keep signing in through the IdP.
       $user = Users::find($userId);
       if ($user === NULL || !Value::bool($user['is_active'] ?? NULL)) {
-        Audit::record(Options::EVENT_LOGIN_DENIED, $provider, $userId, 'user_inactive', 'account is disabled', $subject);
+        Audit::record(
+          Options::EVENT_LOGIN_DENIED,
+          $provider,
+          $userId,
+          'user_inactive',
+          'account is disabled',
+          $subject,
+        );
 
         throw new \CRM_Core_Exception('Your account on this site is disabled. Ask an administrator to reactivate it.');
       }

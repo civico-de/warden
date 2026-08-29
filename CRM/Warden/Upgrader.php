@@ -28,13 +28,15 @@ final class CRM_Warden_Upgrader extends \CRM_Extension_Upgrader_Base {
     }
     $conflicts = [];
     foreach ($byIssuer as $issuer => $ids) {
-      if (count($ids) > 1) {
-        $conflicts[] = sprintf('providers #%s share issuer %s', implode(',', $ids), $issuer);
+      if (count($ids) <= 1) {
+        continue;
       }
+      $conflicts[] = sprintf('providers #%s share issuer %s', implode(',', $ids), $issuer);
     }
     if ($conflicts !== []) {
       throw new \CRM_Core_Exception(
-        'warden 0.2 requires one provider per issuer; remove or merge the duplicates first: ' . implode('; ', $conflicts),
+        'warden 0.2 requires one provider per issuer; remove or merge the duplicates first: '
+          . implode('; ', $conflicts),
       );
     }
     \CRM_Warden_ExtensionUtil::schema()->createIndex(

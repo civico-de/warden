@@ -17,6 +17,7 @@ use PHPUnit\Framework\TestCase;
  * recreated before this test finishes so later test classes can use it.
  *
  * @group headless
+ * @covers \CRM_Warden_Upgrader
  */
 final class UpgraderSchemaTest extends TestCase implements HeadlessInterface {
 

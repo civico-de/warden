@@ -199,6 +199,43 @@ final class SessionAndSecretHeadlessTest extends TestCase implements HeadlessInt
     Secret::protect('a-client-secret');
   }
 
+  public function testEmptySecretValuesNeedNoEncryptionKey(): void {
+    self::assertSame('', Secret::protect(''));
+    self::assertSame('', Secret::reveal(NULL));
+    self::assertSame('', Secret::reveal(''));
+    self::assertTrue(Secret::isProtected(NULL));
+  }
+
+  public function testProviderSecretsAreEncryptedOnceAtThePersistenceBoundary(): void {
+    $plaintext = self::throwawayCredential();
+    $provider = $this->provider([
+      'name' => 'encrypted_secret',
+      'client_secret' => $plaintext,
+    ]);
+
+    $stored = WardenProvider::get(FALSE)
+      ->addSelect('client_secret')
+      ->addWhere('id', '=', $provider->id)
+      ->execute()
+      ->single();
+    $ciphertext = $stored['client_secret'] ?? NULL;
+    self::assertIsString($ciphertext);
+    self::assertNotSame($plaintext, $ciphertext);
+    self::assertTrue(Secret::isProtected($ciphertext));
+    self::assertSame($plaintext, Secret::reveal($ciphertext));
+
+    WardenProvider::update(FALSE)
+      ->addWhere('id', '=', $provider->id)
+      ->addValue('client_secret', $ciphertext)
+      ->execute();
+    $resaved = WardenProvider::get(FALSE)
+      ->addSelect('client_secret')
+      ->addWhere('id', '=', $provider->id)
+      ->execute()
+      ->single();
+    self::assertSame($ciphertext, $resaved['client_secret'] ?? NULL, 'ciphertext must not be encrypted twice');
+  }
+
   /**
    * The refusal, tested deterministically.
    *
@@ -250,6 +287,42 @@ final class SessionAndSecretHeadlessTest extends TestCase implements HeadlessInt
     });
   }
 
+  public function testLegacyPlaintextSecretCannotBeActivatedWithoutAKey(): void {
+    $provider = $this->provider([
+      'name' => 'legacy_plaintext',
+      'is_active' => FALSE,
+    ]);
+    $plaintext = self::throwawayCredential();
+    \CRM_Core_DAO::executeQuery(
+      'UPDATE civicrm_warden_provider SET client_secret = %1 WHERE id = %2',
+      [1 => [$plaintext, 'String'], 2 => [$provider->id, 'Integer']],
+    );
+
+    $this->withoutCredKey(static function () use ($provider): void {
+      $threw = NULL;
+      try {
+        WardenProvider::update(FALSE)
+          ->addWhere('id', '=', $provider->id)
+          ->addValue('is_active', TRUE)
+          ->execute();
+      }
+      catch (\Throwable $e) {
+        $threw = $e;
+      }
+
+      self::assertNotNull($threw, 'a legacy plaintext secret must block activation');
+      self::assertStringContainsString('stored unencrypted', $threw->getMessage());
+
+      $row = WardenProvider::get(FALSE)
+        ->addSelect('is_active', 'client_secret')
+        ->addWhere('id', '=', $provider->id)
+        ->execute()
+        ->single();
+      self::assertFalse((bool) ($row['is_active'] ?? TRUE));
+      self::assertIsString($row['client_secret'] ?? NULL);
+    });
+  }
+
   /**
    * Run a callback with no usable CRED key.
    *
@@ -288,15 +361,22 @@ final class SessionAndSecretHeadlessTest extends TestCase implements HeadlessInt
   public function testTheAuditTrailIsAppendOnlyThroughTheApi(): void {
     $row = WardenAudit::create(FALSE)->addValue('event', Options::EVENT_LOGIN_FAILURE)->execute()->single();
     $permissions = \CRM_Core_Config::singleton()->userPermissionClass->permissions;
-    \CRM_Core_Config::singleton()->userPermissionClass->permissions = ['access CiviCRM', 'administer warden', 'view warden log'];
+    \CRM_Core_Config::singleton()->userPermissionClass->permissions = [
+      'access CiviCRM',
+      'administer warden',
+      'view warden log',
+    ];
 
     try {
       self::assertCount(1, WardenAudit::get(TRUE)->addWhere('id', '=', $row['id'])->execute());
       $denied = 0;
       foreach ([
-        static fn() => WardenAudit::create(TRUE)->addValue('event', Options::EVENT_LOGIN_SUCCESS)->execute(),
-        static fn() => WardenAudit::update(TRUE)->addWhere('id', '=', $row['id'])->addValue('detail', 'forged')->execute(),
-        static fn() => WardenAudit::delete(TRUE)->addWhere('id', '=', $row['id'])->execute(),
+        static fn () => WardenAudit::create(TRUE)->addValue('event', Options::EVENT_LOGIN_SUCCESS)->execute(),
+        static fn () => WardenAudit::update(TRUE)
+          ->addWhere('id', '=', $row['id'])
+          ->addValue('detail', 'forged')
+          ->execute(),
+        static fn () => WardenAudit::delete(TRUE)->addWhere('id', '=', $row['id'])->execute(),
       ] as $write) {
         try {
           $write();
