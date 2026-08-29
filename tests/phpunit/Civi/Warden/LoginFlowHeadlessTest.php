@@ -57,11 +57,27 @@ final class LoginFlowHeadlessTest extends TestCase implements HeadlessInterface,
 
   protected function tearDown(): void {
     Http::setClient(NULL);
+    SessionRegistry::setTestSessionId(NULL);
+    SessionMark::clear();
     parent::tearDown();
   }
 
   private function flow(): LoginFlow {
     return new LoginFlow(new StateStore($this->storage, 600));
+  }
+
+  public function testFactoryClampsConfiguredStateLifetime(): void {
+    \Civi::settings()->set('warden_state_ttl', 1);
+    self::assertSame(60, $this->factoryStateTtl());
+    \Civi::settings()->set('warden_state_ttl', 99_999);
+    self::assertSame(1800, $this->factoryStateTtl());
+  }
+
+  private function factoryStateTtl(): int {
+    $states = (new \ReflectionProperty(LoginFlow::class, 'states'))->getValue(LoginFlow::create());
+    self::assertInstanceOf(StateStore::class, $states);
+
+    return Value::int((new \ReflectionProperty(StateStore::class, 'ttl'))->getValue($states));
   }
 
   /**
@@ -237,6 +253,35 @@ final class LoginFlowHeadlessTest extends TestCase implements HeadlessInterface,
     self::assertCount(
       1,
       WardenIdentity::get(FALSE)->addWhere('subject', '=', 'subject-0001')->execute(),
+    );
+  }
+
+  public function testSessionStartFailureIsAuditedAndSafelyWrapped(): void {
+    $provider = $this->provider();
+    $userId = Users::provision('session-user', 'session-user@example.org', 'Session User', []);
+    $claims = new IdTokenClaims('session-subject', [
+      'sub' => 'session-subject',
+      'sid' => 'provider-session-id',
+    ]);
+    SessionRegistry::setTestSessionId('local-session-id');
+
+    $failure = NULL;
+    try {
+      $this->flow()->establishSession($provider, $userId, $claims, 'signed-id-token', 'session-user@example.org');
+    }
+    catch (\CRM_Core_Exception $e) {
+      $failure = $e;
+    }
+
+    self::assertNotNull($failure);
+    self::assertSame('Could not start a session for this account.', $failure->getMessage());
+    self::assertNull(SessionMark::providerId());
+    self::assertCount(
+      1,
+      WardenAudit::get(FALSE)
+        ->addWhere('reason', '=', 'session_failed')
+        ->addWhere('user_id', '=', $userId)
+        ->execute(),
     );
   }
 

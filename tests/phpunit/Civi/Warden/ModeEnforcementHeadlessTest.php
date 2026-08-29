@@ -159,6 +159,19 @@ final class ModeEnforcementHeadlessTest extends TestCase implements HeadlessInte
     self::assertNull(self::mixedValue($success), 'warden must leave the decision to core when it has no opinion');
   }
 
+  public function testTheCheckPasswordBackstopAcceptsTheLegacyScalarUserIdShape(): void {
+    $this->requireSso();
+    $success = NULL;
+    $event = GenericHookEvent::create([
+      'userID' => $this->plainUserId,
+      'success' => &$success,
+    ]);
+
+    PasswordLoginSubscriber::onCheckPassword($event);
+
+    self::assertFalse(self::mixedValue($success));
+  }
+
   // --- The administrator escape hatch -----------------------------------
 
   public function testAdministratorsKeepPasswordLoginByDefault(): void {
@@ -414,6 +427,50 @@ final class ModeEnforcementHeadlessTest extends TestCase implements HeadlessInte
       ['hook_civicrm_pageRun' => 'onPageRun'],
       LoginScreenSubscriber::getSubscribedEvents(),
     );
+  }
+
+  public function testApiRequestDescriptionSupportsObjectAndUnknownShapes(): void {
+    $describe = new \ReflectionMethod(PasswordLoginSubscriber::class, 'describe');
+    $request = new class() {
+
+      public function getEntityName(): string {
+        return 'User';
+      }
+
+      public function getActionName(): string {
+        return 'passwordReset';
+      }
+
+    };
+
+    self::assertSame(['User', 'passwordReset'], $describe->invoke(NULL, $request));
+    self::assertSame(['', ''], $describe->invoke(NULL, 'unknown-request-shape'));
+  }
+
+  public function testLoginScreenWithoutProvidersAddsNothing(): void {
+    if (!class_exists(\CRM_Standaloneusers_Page_Login::class)) {
+      self::fail('standaloneusers must be installed');
+    }
+    $region = \CRM_Core_Region::instance('page-body');
+    $before = $region->render('', FALSE);
+    $page = new \CRM_Standaloneusers_Page_Login();
+
+    LoginScreenSubscriber::onPageRun(GenericHookEvent::create([]));
+    LoginScreenSubscriber::onPageRun(GenericHookEvent::createOrdered(['page'], [&$page]));
+
+    self::assertSame($before, $region->render('', FALSE));
+  }
+
+  public function testRequiredProviderAddsThePasswordDisabledExplanation(): void {
+    $this->requireSso();
+    $page = new \CRM_Standaloneusers_Page_Login();
+
+    LoginScreenSubscriber::onPageRun(GenericHookEvent::createOrdered(['page'], [&$page]));
+
+    $markup = \CRM_Core_Region::instance('page-body')->render('', FALSE);
+    self::assertIsString($markup);
+    self::assertStringContainsString('requires single sign-on', $markup);
+    self::assertStringContainsString('Password sign-in is disabled', $markup);
   }
 
   /**

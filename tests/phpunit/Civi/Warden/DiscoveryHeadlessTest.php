@@ -102,6 +102,52 @@ final class DiscoveryHeadlessTest extends TestCase implements HeadlessInterface,
     self::assertSame(['RS256'], $metadata->idTokenSigningAlgValuesSupported());
   }
 
+  public function testClientExposesBothFlowsAndFallsBackToTheLocalAlgorithmAllowList(): void {
+    $provider = $this->provider();
+    Http::setClient(new MockHttpClient([
+      $this->discovery(['id_token_signing_alg_values_supported' => []]),
+    ]));
+
+    $client = OidcClient::forProvider($provider);
+
+    $client->authorizationCode();
+    $client->backChannelLogout();
+    self::assertSame([], $client->metadata()->idTokenSigningAlgValuesSupported());
+  }
+
+  public function testConfidentialClientConstructionUsesTheProtectedSecret(): void {
+    $provider = $this->provider();
+    WardenProvider::update(FALSE)
+      ->addWhere('id', '=', $provider->id)
+      ->addValue('client_secret', 'confidential-client-fixture')
+      ->execute();
+    $provider = ProviderRepository::find($provider->id);
+    self::assertNotNull($provider);
+    Cache::forget(OidcClient::discoveryCacheKey($provider));
+    Http::setClient(new MockHttpClient([$this->discovery()]));
+
+    OidcClient::forProvider($provider)->authorizationCode();
+  }
+
+  public function testDiscoveryDropsProviderSpecificValuesTheLibraryCannotRepresent(): void {
+    $provider = $this->provider();
+    Http::setClient(new MockHttpClient([$this->discovery([
+      'custom_bool' => TRUE,
+      'custom_number' => 12,
+      'custom_object' => ['nested' => 'value'],
+      'custom_mixed_list' => ['valid', 12],
+      'custom_string_list' => ['one', 'two'],
+    ])]));
+
+    $claims = OidcClient::metadataFor($provider)->claims();
+
+    self::assertTrue($claims['custom_bool'] ?? FALSE);
+    self::assertSame(['one', 'two'], $claims['custom_string_list'] ?? NULL);
+    self::assertArrayNotHasKey('custom_number', $claims);
+    self::assertArrayNotHasKey('custom_object', $claims);
+    self::assertArrayNotHasKey('custom_mixed_list', $claims);
+  }
+
   public function testDifferentIssuerIsRefused(): void {
     $provider = $this->provider();
     Http::setClient(new MockHttpClient([$this->discovery(['issuer' => 'https://evil.example.org'])]));
@@ -177,6 +223,9 @@ final class DiscoveryHeadlessTest extends TestCase implements HeadlessInterface,
   }
 
   public function testSessionMarkCapturesAndConsumesProviderLogoutUrl(): void {
+    SessionMark::captureEndSession();
+    self::assertNull(SessionMark::pendingEndSession());
+
     $provider = $this->provider();
     Http::setClient(new MockHttpClient([$this->discovery()]));
 
@@ -317,6 +366,18 @@ final class DiscoveryHeadlessTest extends TestCase implements HeadlessInterface,
     $jwks = OidcClient::jwksFor($provider);
 
     self::assertSame('health-key', $jwks['keys'][0]['kid'] ?? NULL);
+  }
+
+  public function testJwksHealthLoaderRejectsANonObjectKey(): void {
+    $provider = $this->provider();
+    Http::setClient(new MockHttpClient([
+      $this->discovery(),
+      new MockResponse((string) json_encode(['keys' => ['invalid-key']])),
+    ]));
+
+    $this->expectException(\CRM_Core_Exception::class);
+    $this->expectExceptionMessageMatches('/invalid signing key/');
+    OidcClient::jwksFor($provider);
   }
 
 }

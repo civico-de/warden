@@ -14,4 +14,12 @@ use Civi\Warden\Tests\Support\LandingUrlContract;
  *
  * @covers \Civi\Warden\LandingUrl
  */
-final class LandingUrlTest extends LandingUrlContract {}
+final class LandingUrlTest extends LandingUrlContract {
+
+  public function testAbsoluteUsesTheConfiguredBaseAndStillSanitises(): void {
+    $absolute = LandingUrl::absolute('https://attacker.example.org');
+
+    self::assertStringEndsWith(LandingUrl::DEFAULT_PATH, $absolute);
+  }
+
+}

@@ -31,6 +31,7 @@ use Symfony\Contracts\Cache\ItemInterface;
  * @covers \Civi\Warden\LogoutTokenClaims
  * @covers \Civi\Warden\Value
  * @covers \Civi\Warden\Http
+ * @covers \Civi\Warden\Cache
  */
 final class OidcSupportHeadlessTest extends TestCase implements HeadlessInterface, TransactionalInterface {
 
@@ -97,6 +98,19 @@ final class OidcSupportHeadlessTest extends TestCase implements HeadlessInterfac
     self::assertIsInt(Cache::fetchedAt($key));
   }
 
+  public function testReplayClaimsAreAtomicAndCacheTtlIsClamped(): void {
+    $key = 'support-claim-' . bin2hex(random_bytes(8));
+    self::assertTrue(Cache::claim($key, 1));
+    self::assertFalse(Cache::claim($key, 1));
+
+    \Civi::settings()->set('warden_discovery_ttl', 1);
+    self::assertSame(300, Cache::ttl());
+    \Civi::settings()->set('warden_discovery_ttl', 99_999);
+    self::assertSame(3600, Cache::ttl());
+    \Civi::settings()->set('warden_discovery_ttl', 'invalid');
+    self::assertSame(900, Cache::ttl());
+  }
+
   public function testCacheItemImplementsTheCompleteNoOpExpiryContract(): void {
     $item = new OidcCacheItem('item-key');
 
@@ -135,6 +149,29 @@ final class OidcSupportHeadlessTest extends TestCase implements HeadlessInterfac
       JwtFixture::claims(time(), 'nonce'),
       kid: NULL,
     )));
+    self::assertFalse(
+      $loader->refreshForUnknownKid($uri, JwtFixture::sign(
+        JwtFixture::claims(time(), 'nonce'),
+        kid: 'another-new-key',
+      )),
+      'the per-URI refresh budget permits no second refresh',
+    );
+  }
+
+  public function testUnknownKidRefreshRequiresAKeyList(): void {
+    $inner = new class() implements JwksLoader {
+
+      public function load(string $jwksUri): array {
+        return ['keys' => 'not-a-list'];
+      }
+
+    };
+    $loader = new RefreshableJwksLoader($inner, new OidcCache(), 900, 'invalid-key-list');
+
+    self::assertFalse($loader->refreshForUnknownKid(
+      'https://invalid-keys.example.org/jwks',
+      JwtFixture::sign(JwtFixture::claims(time(), 'nonce'), kid: 'unknown-key'),
+    ));
   }
 
   public function testIdTokenValidatorRetriesAfterUnknownKidRefresh(): void {
@@ -214,6 +251,134 @@ final class OidcSupportHeadlessTest extends TestCase implements HeadlessInterfac
 
     self::assertSame(2, $validator->calls);
     self::assertSame(2, $innerKeys->calls);
+  }
+
+  public function testIdTokenValidatorPreservesOriginalErrorWhenRefreshIsImpossible(): void {
+    $original = new InvalidTokenException('original id-token failure');
+    $validator = new class($original) implements IdTokenValidator {
+
+      public function __construct(
+        private readonly InvalidTokenException $failure,
+      ) {}
+
+      public function validate(IdToken $token, ?string $nonce = NULL): void {
+        throw $this->failure;
+      }
+
+    };
+    $innerKeys = new class() implements JwksLoader {
+
+      public function load(string $jwksUri): array {
+        return ['keys' => []];
+      }
+
+    };
+    $keys = new RefreshableJwksLoader($innerKeys, new OidcCache(), 900, 'id-no-refresh');
+    $token = new IdToken(JwtFixture::sign(JwtFixture::claims(time(), 'nonce'), kid: NULL));
+
+    try {
+      (new RefreshingIdTokenValidator($validator, $keys, 'https://keys.example.org'))->validate($token);
+      self::fail('the original validation error must survive');
+    }
+    catch (InvalidTokenException $e) {
+      self::assertSame($original, $e);
+    }
+  }
+
+  public function testIdTokenValidatorPreservesOriginalErrorWhenRefreshFails(): void {
+    $original = new InvalidTokenException('original id-token failure');
+    $validator = new class($original) implements IdTokenValidator {
+
+      public function __construct(
+        private readonly InvalidTokenException $failure,
+      ) {}
+
+      public function validate(IdToken $token, ?string $nonce = NULL): void {
+        throw $this->failure;
+      }
+
+    };
+    $innerKeys = new class() implements JwksLoader {
+
+      public function load(string $jwksUri): array {
+        throw new \RuntimeException('temporary JWKS failure');
+      }
+
+    };
+    $keys = new RefreshableJwksLoader($innerKeys, new OidcCache(), 900, 'id-refresh-failure');
+    $token = new IdToken(JwtFixture::sign(JwtFixture::claims(time(), 'nonce'), kid: 'new-key'));
+
+    try {
+      (new RefreshingIdTokenValidator($validator, $keys, 'https://keys.example.org'))->validate($token);
+      self::fail('the original validation error must survive');
+    }
+    catch (InvalidTokenException $e) {
+      self::assertSame($original, $e);
+    }
+  }
+
+  public function testLogoutValidatorPreservesOriginalErrorWhenRefreshIsImpossible(): void {
+    $original = new InvalidTokenException('original logout-token failure');
+    $validator = new class($original) implements LogoutTokenValidator {
+
+      public function __construct(
+        private readonly InvalidTokenException $failure,
+      ) {}
+
+      public function validate(LogoutToken $token): void {
+        throw $this->failure;
+      }
+
+    };
+    $innerKeys = new class() implements JwksLoader {
+
+      public function load(string $jwksUri): array {
+        return ['keys' => []];
+      }
+
+    };
+    $keys = new RefreshableJwksLoader($innerKeys, new OidcCache(), 900, 'logout-no-refresh');
+    $token = new LogoutToken(JwtFixture::sign(['events' => []], kid: NULL));
+
+    try {
+      (new RefreshingLogoutTokenValidator($validator, $keys, 'https://keys.example.org'))->validate($token);
+      self::fail('the original validation error must survive');
+    }
+    catch (InvalidTokenException $e) {
+      self::assertSame($original, $e);
+    }
+  }
+
+  public function testLogoutValidatorPreservesOriginalErrorWhenRefreshFails(): void {
+    $original = new InvalidTokenException('original logout-token failure');
+    $validator = new class($original) implements LogoutTokenValidator {
+
+      public function __construct(
+        private readonly InvalidTokenException $failure,
+      ) {}
+
+      public function validate(LogoutToken $token): void {
+        throw $this->failure;
+      }
+
+    };
+    $innerKeys = new class() implements JwksLoader {
+
+      public function load(string $jwksUri): array {
+        throw new \RuntimeException('temporary JWKS failure');
+      }
+
+    };
+    $keys = new RefreshableJwksLoader($innerKeys, new OidcCache(), 900, 'logout-refresh-failure');
+    $token = new LogoutToken(JwtFixture::sign(['events' => []], kid: 'new-key'));
+
+    try {
+      (new RefreshingLogoutTokenValidator($validator, $keys, 'https://keys.example.org'))->validate($token);
+      self::fail('the original validation error must survive');
+    }
+    catch (InvalidTokenException $e) {
+      self::assertSame($original, $e);
+    }
   }
 
   /**

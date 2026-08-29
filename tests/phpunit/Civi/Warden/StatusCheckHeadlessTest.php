@@ -13,6 +13,8 @@ use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpClient\MockHttpClient;
 use Symfony\Component\HttpClient\Response\MockResponse;
 
+// @mago-expect lint:cyclomatic-complexity
+// One headless fixture covers the complete status-check contract.
 /**
  * The system checks, and the herald checks that reuse them.
  *
@@ -21,6 +23,15 @@ use Symfony\Component\HttpClient\Response\MockResponse;
  * @covers \Civi\Warden\EntraStatusCheck
  * @covers \Civi\Warden\RedirectUri
  * @covers \Civi\Warden\Escape
+ * @covers \Civi\Warden\OidcClient
+ * @covers \Civi\Warden\Cache
+ * @covers \Civi\Warden\OidcCache
+ * @covers \Civi\Warden\RefreshableJwksLoader
+ * @covers \Civi\Warden\Http
+ * @covers \Civi\Warden\Secret
+ * @covers ::warden_civicrm_permission
+ * @covers ::warden_civicrm_check
+ * @covers ::warden_civicrm_heraldChecks
  */
 final class StatusCheckHeadlessTest extends TestCase implements HeadlessInterface, TransactionalInterface {
 
@@ -61,6 +72,25 @@ final class StatusCheckHeadlessTest extends TestCase implements HeadlessInterfac
       'id_token_signing_alg_values_supported' => ['RS256'],
       'code_challenge_methods_supported' => ['S256'],
     ], $overrides)));
+  }
+
+  private function jwksResponse(): MockResponse {
+    $public = openssl_pkey_get_public(JwtFixture::keyPair('status-check')['public']);
+    self::assertNotFalse($public);
+    $details = openssl_pkey_get_details($public);
+    self::assertIsArray($details);
+    self::assertIsArray($details['rsa'] ?? NULL);
+
+    return new MockResponse((string) json_encode([
+      'keys' => [[
+        'kty' => 'RSA',
+        'kid' => JwtFixture::KID,
+        'use' => 'sig',
+        'alg' => 'RS256',
+        'n' => rtrim(strtr(base64_encode(Value::str($details['rsa']['n'] ?? NULL)), '+/', '-_'), '='),
+        'e' => rtrim(strtr(base64_encode(Value::str($details['rsa']['e'] ?? NULL)), '+/', '-_'), '='),
+      ]],
+    ]));
   }
 
   /**
@@ -158,6 +188,13 @@ final class StatusCheckHeadlessTest extends TestCase implements HeadlessInterfac
     $this->stubHttp([$this->discoveryResponse(['code_challenge_methods_supported' => ['plain']])]);
 
     self::assertContains('warden_no_pkce_' . $provider->id, $this->names());
+  }
+
+  public function testProviderWithoutAnAdvertisedAlgorithmListUsesTheLocalAllowList(): void {
+    $provider = $this->provider();
+    $this->stubHttp([$this->discoveryResponse(['id_token_signing_alg_values_supported' => []])]);
+
+    self::assertNotContains('warden_alg_mismatch_' . $provider->id, $this->names());
   }
 
   public function testAnEmptyAlgorithmAllowListIsReported(): void {
@@ -270,6 +307,49 @@ final class StatusCheckHeadlessTest extends TestCase implements HeadlessInterfac
     self::assertStringContainsString('unreachable', $result['detail']);
   }
 
+  public function testHeraldMarksARequiredUnreachableProviderExplicitly(): void {
+    $provider = $this->provider(['mode' => Options::MODE_REQUIRED]);
+    $this->stubHttp([new MockResponse('down', ['http_code' => 500])]);
+    $checks = [];
+    warden_civicrm_heraldChecks($checks);
+
+    $check = $checks['warden.provider.' . $provider->name];
+    self::assertIsCallable($check);
+    $result = $check();
+    self::assertIsArray($result);
+    self::assertSame('fail', $result['status']);
+    self::assertStringContainsString('REQUIRED provider unreachable', Value::str($result['detail'] ?? NULL));
+  }
+
+  public function testHeraldReportsAHealthySigningKeySet(): void {
+    $provider = $this->provider();
+    $this->stubHttp([$this->discoveryResponse(), $this->jwksResponse()]);
+    $checks = [];
+    warden_civicrm_heraldChecks($checks);
+
+    $check = $checks['warden.provider.' . $provider->name];
+    self::assertIsCallable($check);
+    $result = $check();
+    self::assertSame(['status' => 'ok', 'detail' => '1 signing key(s)'], $result);
+  }
+
+  public function testHeraldReportsAnUnusableSigningKeySet(): void {
+    $provider = $this->provider();
+    $this->stubHttp([
+      $this->discoveryResponse(),
+      new MockResponse((string) json_encode(['keys' => []])),
+    ]);
+    $checks = [];
+    warden_civicrm_heraldChecks($checks);
+
+    $check = $checks['warden.provider.' . $provider->name];
+    self::assertIsCallable($check);
+    $result = $check();
+    self::assertIsArray($result);
+    self::assertSame('fail', $result['status']);
+    self::assertStringContainsString('key set unusable', Value::str($result['detail'] ?? NULL));
+  }
+
   public function testHeraldConfigCheckIsOkOnAHealthySite(): void {
     $checks = [];
     warden_civicrm_heraldChecks($checks);
@@ -282,6 +362,72 @@ final class StatusCheckHeadlessTest extends TestCase implements HeadlessInterfac
     $result = $check();
     self::assertIsArray($result);
     self::assertSame('ok', $result['status'] ?? NULL);
+  }
+
+  public function testHeraldConfigCheckFailsForAnErrorLevelProviderProblem(): void {
+    $provider = $this->provider();
+    \CRM_Core_DAO::executeQuery(
+      // ckconform-ignore raw-sql -- deliberately creates invalid legacy configuration
+      'UPDATE civicrm_warden_provider SET allowed_algorithms = %1, is_active = 0 WHERE id = %2',
+      [1 => ['', 'String'], 2 => [$provider->id, 'Integer']],
+    );
+    $checks = [];
+    warden_civicrm_heraldChecks($checks);
+
+    $check = $checks['warden.config'];
+    self::assertIsCallable($check);
+    $result = $check();
+    self::assertIsArray($result);
+    self::assertSame('fail', $result['status']);
+    self::assertStringContainsString('no signing algorithm', Value::str($result['detail'] ?? NULL));
+  }
+
+  public function testCoreHooksExposePermissionsAndStatusMessages(): void {
+    $permissions = [];
+    warden_civicrm_permission($permissions);
+    self::assertSame(['administer CiviCRM'], $permissions['administer warden']['implied_by']);
+    self::assertSame(['administer warden'], $permissions['view warden log']['implied_by']);
+
+    $messages = [];
+    warden_civicrm_check($messages);
+    self::assertNotSame([], $messages, 'the local HTTP base URL should produce a status warning');
+  }
+
+  public function testMissingCredKeyReportsExistingPlaintextSecretAsCritical(): void {
+    $provider = $this->provider(['is_active' => FALSE]);
+    \CRM_Core_DAO::executeQuery(
+      'UPDATE civicrm_warden_provider SET client_secret = %1 WHERE id = %2',
+      [1 => ['legacy-plaintext-secret', 'String'], 2 => [$provider->id, 'Integer']],
+    );
+
+    $this->withoutCredKey(static function () use ($provider): void {
+      $messages = [];
+      foreach (StatusCheck::messages() as $message) {
+        $messages[$message->getName()] = $message;
+      }
+      self::assertArrayHasKey('warden_cred_key_missing', $messages);
+      self::assertSame(\Psr\Log\LogLevel::CRITICAL, $messages['warden_cred_key_missing']->getSeverity());
+      self::assertArrayHasKey('warden_plaintext_secret_' . $provider->id, $messages);
+    });
+  }
+
+  private function withoutCredKey(callable $body): void {
+    /** @var \Civi\Crypto\CryptoRegistry $registry */
+    $registry = \Civi::service('crypto.registry');
+    $real = $registry->findKey('CRED');
+    $registry->addPlainText(['tags' => ['CRED'], 'weight' => -1000]);
+
+    try {
+      $body();
+    }
+    finally {
+      $registry->addSymmetricKey([
+        'key' => $real['key'],
+        'suite' => $real['suite'],
+        'tags' => ['CRED'],
+        'weight' => -2000,
+      ]);
+    }
   }
 
   public function testTheEscapeHatchSettingDisablesEverything(): void {

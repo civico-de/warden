@@ -290,6 +290,30 @@ final class ProvisioningHeadlessTest extends TestCase implements HeadlessInterfa
     self::assertCount(1, WardenAudit::get(FALSE)->addWhere('reason', '=', 'adopted')->execute());
   }
 
+  public function testEmailLinkingRefusesADeactivatedMatchingAccount(): void {
+    $provider = $this->provider([
+      'link_policy' => Options::LINK_VERIFIED_EMAIL,
+      'provision_policy' => Options::PROVISION_NEVER,
+    ]);
+    $existing = $this->makeUser('inactive-link@example.org');
+    User::update(FALSE)->addWhere('id', '=', $existing)->addValue('is_active', FALSE)->execute();
+
+    try {
+      Provisioner::resolve($provider, $this->claims([
+        'sub' => 'subject-inactive-link',
+        'email' => 'inactive-link@example.org',
+        'email_verified' => TRUE,
+      ]));
+      self::fail('a deactivated local account must not be adopted');
+    }
+    catch (\CRM_Core_Exception $e) {
+      self::assertStringContainsString('no account linked', $e->getMessage());
+    }
+
+    self::assertCount(1, WardenAudit::get(FALSE)->addWhere('reason', '=', 'user_inactive')->execute());
+    self::assertCount(0, WardenIdentity::get(FALSE)->addWhere('user_id', '=', $existing)->execute());
+  }
+
   /**
    * The refusal that is warden's reason to exist.
    */
@@ -346,6 +370,37 @@ final class ProvisioningHeadlessTest extends TestCase implements HeadlessInterfa
       ->addValue('user_id', $other)
       ->addValue('subject', 'subject-G')
       ->execute();
+  }
+
+  public function testProvisionerTurnsALinkRaceIntoASafeAuditedRefusal(): void {
+    $provider = $this->provider();
+    $winner = $this->makeUser('race-winner@example.org');
+    $loser = $this->makeUser('race-loser@example.org');
+    WardenIdentity::create(FALSE)
+      ->addValue('provider_id', $provider->id)
+      ->addValue('user_id', $winner)
+      ->addValue('subject', 'race-subject')
+      ->execute();
+
+    $link = new \ReflectionMethod(Provisioner::class, 'link');
+    $failure = NULL;
+    try {
+      $link->invoke(NULL, $provider, $loser, 'race-subject');
+    }
+    catch (\CRM_Core_Exception $e) {
+      $failure = $e;
+    }
+
+    self::assertNotNull($failure);
+    self::assertStringContainsString('could not be linked', $failure->getMessage());
+    self::assertCount(1, WardenIdentity::get(FALSE)->addWhere('subject', '=', 'race-subject')->execute());
+    self::assertCount(
+      1,
+      WardenAudit::get(FALSE)
+        ->addWhere('reason', '=', 'link_conflict')
+        ->addWhere('user_id', '=', $loser)
+        ->execute(),
+    );
   }
 
   public function testProvisionedUsersGetTheMappedRoles(): void {

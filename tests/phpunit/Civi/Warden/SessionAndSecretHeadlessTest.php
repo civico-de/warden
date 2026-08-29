@@ -9,6 +9,7 @@ use Civi\Api4\WardenAudit;
 use Civi\Api4\WardenIdentity;
 use Civi\Api4\WardenProvider;
 use Civi\Api4\WardenSession;
+use Civi\Core\Event\PreEvent;
 use Civi\Test;
 use Civi\Test\HeadlessInterface;
 use Civi\Test\TransactionalInterface;
@@ -321,6 +322,57 @@ final class SessionAndSecretHeadlessTest extends TestCase implements HeadlessInt
       self::assertFalse((bool) ($row['is_active'] ?? TRUE));
       self::assertIsString($row['client_secret'] ?? NULL);
     });
+  }
+
+  public function testProviderSecretSubscriberIgnoresOtherEntitiesAndActions(): void {
+    self::assertSame(
+      ['hook_civicrm_pre' => ['onPre', 0]],
+      \Civi\Warden\Subscriber\ProviderSecretSubscriber::getSubscribedEvents(),
+    );
+    // @mago-expect lint:no-literal-password -- verifies an unrelated event leaves input untouched
+    $params = ['client_secret' => 'must-remain-plain-in-unrelated-event'];
+    \Civi\Warden\Subscriber\ProviderSecretSubscriber::onPre(
+      new PreEvent('create', 'Contact', NULL, $params),
+    );
+    self::assertSame('must-remain-plain-in-unrelated-event', $params['client_secret']);
+
+    \Civi\Warden\Subscriber\ProviderSecretSubscriber::onPre(
+      new PreEvent('delete', 'WardenProvider', 1, $params),
+    );
+    self::assertSame('must-remain-plain-in-unrelated-event', $params['client_secret']);
+  }
+
+  public function testPublicClientCanBeActivatedWithoutACredKey(): void {
+    $this->withoutCredKey(static function (): void {
+      $created = WardenProvider::create(FALSE)
+        ->setValues([
+          'name' => 'public_without_key',
+          'label' => 'Public client without key',
+          'issuer' => 'https://public.example.org',
+          'client_id' => 'public-client',
+          'scopes' => 'openid',
+          'mode' => Options::MODE_OPTIONAL,
+          'allowed_algorithms' => 'RS256',
+          'is_active' => TRUE,
+        ])
+        ->execute()
+        ->single();
+
+      self::assertIsInt($created['id'] ?? NULL);
+    });
+  }
+
+  public function testUserCleanupSubscriberIgnoresUnrelatedAndUnidentifiedDeletes(): void {
+    self::assertSame(
+      ['hook_civicrm_pre' => ['onPre', 0]],
+      \Civi\Warden\Subscriber\UserCleanupSubscriber::getSubscribedEvents(),
+    );
+    $before = WardenProvider::get(FALSE)->execute()->count();
+    $params = [];
+    \Civi\Warden\Subscriber\UserCleanupSubscriber::onPre(new PreEvent('delete', 'Contact', 1, $params));
+    \Civi\Warden\Subscriber\UserCleanupSubscriber::onPre(new PreEvent('delete', 'User', NULL, $params));
+
+    self::assertCount($before, WardenProvider::get(FALSE)->execute());
   }
 
   /**

@@ -11,7 +11,7 @@ known_hooks=heraldChecks
 
 # Raise once measured with ckcoverage; ratchet up, never down to make a red
 # build green.
-min_coverage=80
+min_coverage=90
 
 # Business hooks live in scan classes (AutoSubscriber/HookInterface); the
 # classic function form is reserved for pre-boot/lifecycle/return-value hooks.

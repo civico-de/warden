@@ -14,6 +14,7 @@ use Civi\Core\Event\GenericHookEvent;
 use Civi\Test;
 use Civi\Test\HeadlessInterface;
 use Civi\Test\TransactionalInterface;
+use Civi\Warden\Page\BackchannelLogoutPage;
 use Civi\Warden\Subscriber\SessionRevocationSubscriber;
 use Civi\Warden\Tests\Support\JwtFixture;
 use DigitalCz\OpenIDConnect\BackChannelLogout\JwtLogoutTokenValidator;
@@ -21,12 +22,16 @@ use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpClient\MockHttpClient;
 use Symfony\Component\HttpClient\Response\MockResponse;
 
+// @mago-expect lint:cyclomatic-complexity
+// This integration contract deliberately keeps the logout lifecycle together.
 /**
  * Persistence and request-boundary enforcement for OIDC single logout.
  *
  * @group headless
  * @covers \Civi\Warden\BackchannelLogout
  * @covers \Civi\Warden\SessionRegistry
+ * @covers \Civi\Warden\Cache
+ * @covers \Civi\Warden\Page\BackchannelLogoutPage
  * @covers \Civi\Warden\Subscriber\SessionRevocationSubscriber
  * @covers \Civi\Api4\Action\Warden\Prune
  * @covers \Civi\Api4\Warden
@@ -46,6 +51,8 @@ final class SingleLogoutHeadlessTest extends TestCase implements HeadlessInterfa
     SessionRegistry::setTestSessionId(NULL);
     SessionRegistry::setTestTerminator(NULL);
     Http::setClient(NULL);
+    $_POST = [];
+    unset($_SERVER['REQUEST_METHOD']);
     parent::tearDown();
   }
 
@@ -222,6 +229,35 @@ final class SingleLogoutHeadlessTest extends TestCase implements HeadlessInterfa
     }
   }
 
+  public function testMalformedLogoutTokenIsClassifiedBeforeProviderLookup(): void {
+    try {
+      BackchannelLogout::apply('not-a-jwt');
+      self::fail('malformed input must be rejected');
+    }
+    catch (TokenValidationException $e) {
+      self::assertSame(TokenValidationException::R_MALFORMED, $e->reason);
+    }
+  }
+
+  public function testLogoutTokenWithoutIssuerIsRejectedBeforeDiscovery(): void {
+    $claims = [
+      'aud' => JwtFixture::CLIENT_ID,
+      'iat' => time() - 5,
+      'exp' => time() + 120,
+      'jti' => 'missing-issuer',
+      'sid' => 'sid-one',
+      'events' => [JwtLogoutTokenValidator::LOGOUT_EVENT_URI => []],
+    ];
+
+    try {
+      BackchannelLogout::apply(JwtFixture::sign($claims));
+      self::fail('an issuer is mandatory');
+    }
+    catch (TokenValidationException $e) {
+      self::assertSame(TokenValidationException::R_MISSING_CLAIM, $e->reason);
+    }
+  }
+
   public function testContradictorySubjectAndSessionClaimsRevokeNothing(): void {
     $provider = $this->provider();
     $this->register($provider, $this->user(), 'local-one', 'sid-one');
@@ -283,6 +319,104 @@ final class SingleLogoutHeadlessTest extends TestCase implements HeadlessInterfa
     }
   }
 
+  public function testBackchannelLogoutRequiresAnExpiryClaim(): void {
+    $this->provider();
+    $this->stubProvider();
+    $claims = [
+      'iss' => self::ISSUER,
+      'aud' => JwtFixture::CLIENT_ID,
+      'iat' => time() - 5,
+      'jti' => 'missing-expiry',
+      'sid' => 'sid-one',
+      'events' => [JwtLogoutTokenValidator::LOGOUT_EVENT_URI => []],
+    ];
+
+    try {
+      BackchannelLogout::apply(JwtFixture::sign($claims));
+      self::fail('a logout token without exp must be refused');
+    }
+    catch (TokenValidationException $e) {
+      self::assertSame(TokenValidationException::R_MISSING_CLAIM, $e->reason);
+    }
+  }
+
+  public function testBackchannelLogoutRejectsAnExpiredToken(): void {
+    $this->provider();
+    $this->stubProvider();
+    $claims = [
+      'iss' => self::ISSUER,
+      'aud' => JwtFixture::CLIENT_ID,
+      'iat' => time() - 120,
+      'exp' => time() - 60,
+      'jti' => 'expired-token',
+      'sid' => 'sid-one',
+      'events' => [JwtLogoutTokenValidator::LOGOUT_EVENT_URI => []],
+    ];
+
+    try {
+      BackchannelLogout::apply(JwtFixture::sign($claims));
+      self::fail('an expired logout token must be refused');
+    }
+    catch (TokenValidationException $e) {
+      self::assertSame(TokenValidationException::R_EXPIRED, $e->reason);
+    }
+  }
+
+  public function testBackchannelLogoutRejectsMalformedBindingClaims(): void {
+    $this->provider();
+    $this->stubProvider();
+    $claims = [
+      'iss' => self::ISSUER,
+      'aud' => JwtFixture::CLIENT_ID,
+      'iat' => time() - 5,
+      'exp' => time() + 120,
+      'jti' => 'malformed-binding',
+      'sub' => 123,
+      'sid' => 'sid-one',
+      'events' => [JwtLogoutTokenValidator::LOGOUT_EVENT_URI => []],
+    ];
+
+    try {
+      BackchannelLogout::apply(JwtFixture::sign($claims));
+      self::fail('non-string binding claims must be refused');
+    }
+    catch (TokenValidationException $e) {
+      self::assertSame(TokenValidationException::R_MALFORMED, $e->reason);
+    }
+  }
+
+  public function testBackchannelPageRejectsWrongMethodMissingAndMalformedTokens(): void {
+    $_SERVER['REQUEST_METHOD'] = 'GET';
+    self::assertSame(['status' => 400, 'error' => 'invalid_request'], BackchannelLogoutPage::response());
+
+    $_SERVER['REQUEST_METHOD'] = 'POST';
+    self::assertSame(['status' => 400, 'error' => 'invalid_request'], BackchannelLogoutPage::response());
+
+    // @mago-expect lint:no-literal-password -- deliberately malformed public request fixture
+    $_POST['logout_token'] = 'malformed-token';
+    self::assertSame(['status' => 400, 'error' => 'invalid_request'], BackchannelLogoutPage::response());
+  }
+
+  public function testBackchannelPageConvertsProviderFailureToGenericProtocolError(): void {
+    $this->provider();
+    Http::setClient(new MockHttpClient([]));
+    $_SERVER['REQUEST_METHOD'] = 'POST';
+    $_POST['logout_token'] = $this->logoutToken();
+
+    self::assertSame(['status' => 400, 'error' => 'invalid_request'], BackchannelLogoutPage::response());
+  }
+
+  public function testBackchannelPageReturnsSuccessAfterDurableRevocation(): void {
+    $provider = $this->provider();
+    $this->register($provider, $this->user(), 'page-local', 'sid-one');
+    $this->stubProvider();
+    $_SERVER['REQUEST_METHOD'] = 'POST';
+    $_POST['logout_token'] = $this->logoutToken();
+
+    self::assertSame(['status' => 200, 'error' => ''], BackchannelLogoutPage::response());
+    self::assertTrue(SessionRegistry::currentIsRevoked());
+  }
+
   public function testRevokedSessionIsTerminatedBeforeRouting(): void {
     $provider = $this->provider();
     $this->register($provider, $this->user(), 'local-one', 'sid-one');
@@ -342,6 +476,73 @@ final class SingleLogoutHeadlessTest extends TestCase implements HeadlessInterfa
 
     self::assertTrue(SessionRegistry::currentIsRevoked());
     self::assertCount(1, WardenSession::get(FALSE)->addWhere('revoked_date', 'IS NOT NULL')->execute());
+  }
+
+  public function testSessionRegistryFailsClosedWithoutALocalSession(): void {
+    $provider = $this->provider();
+    SessionRegistry::setTestSessionId(NULL);
+
+    $this->expectException(\CRM_Core_Exception::class);
+    $this->expectExceptionMessageMatches('/could not bind/');
+    SessionRegistry::register(
+      $provider,
+      $this->user(),
+      new IdTokenClaims('subject-no-session', ['sub' => 'subject-no-session']),
+    );
+  }
+
+  public function testClearingTheCurrentSessionBindingIsExactAndIdempotent(): void {
+    $provider = $this->provider();
+    $this->register($provider, $this->user(), 'local-clear', 'sid-clear');
+    self::assertCount(1, WardenSession::get(FALSE)->execute());
+
+    SessionRegistry::clearCurrent();
+    SessionRegistry::clearCurrent();
+
+    self::assertCount(0, WardenSession::get(FALSE)->execute());
+  }
+
+  public function testReadingAStaleBindingRefreshesItsLastSeenTime(): void {
+    $provider = $this->provider();
+    $this->register($provider, $this->user(), 'local-touch', 'sid-touch');
+    $session = WardenSession::get(FALSE)->execute()->single();
+    \CRM_Core_DAO::executeQuery(
+      'UPDATE civicrm_warden_session SET last_seen_date = DATE_SUB(NOW(), INTERVAL 2 HOUR) WHERE id = %1',
+      [1 => [$session['id'], 'Integer']],
+    );
+
+    self::assertFalse(SessionRegistry::currentIsRevoked());
+
+    $touched = WardenSession::get(FALSE)->addWhere('id', '=', $session['id'])->execute()->single();
+    self::assertGreaterThan(time() - 60, strtotime(Value::str($touched['last_seen_date'] ?? NULL)));
+  }
+
+  public function testTerminatingWithoutARegisteredBindingStillEndsTheSession(): void {
+    SessionRegistry::setTestSessionId('unregistered-local-session');
+    $terminated = FALSE;
+    SessionRegistry::setTestTerminator(static function () use (&$terminated): void {
+      $terminated = TRUE;
+    });
+
+    SessionRegistry::terminateCurrent(Options::EVENT_SESSION_REVOKED);
+
+    self::assertTrue($terminated);
+    self::assertCount(1, WardenAudit::get(FALSE)->addWhere('event', '=', Options::EVENT_SESSION_REVOKED)->execute());
+  }
+
+  public function testRevocationSubscriberIgnoresLogoutAndUnrevokedRequests(): void {
+    self::assertSame(
+      ['civi.invoke.auth' => ['onInvoke', -100]],
+      SessionRevocationSubscriber::getSubscribedEvents(),
+    );
+    SessionRevocationSubscriber::onInvoke(GenericHookEvent::create([
+      'args' => [0 => 'civicrm', 1 => 'logout'],
+    ]));
+    SessionRevocationSubscriber::onInvoke(GenericHookEvent::create([
+      'args' => [0 => 'civicrm', 1 => 'dashboard'],
+    ]));
+
+    self::assertCount(0, WardenAudit::get(FALSE)->addWhere('event', '=', Options::EVENT_SESSION_REVOKED)->execute());
   }
 
   public function testPruningDeletesStaleBindingsOnly(): void {
