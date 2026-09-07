@@ -18,7 +18,7 @@ on:
   push:
     branches: [main]
   pull_request:
-
+  workflow_dispatch:
 # The jobs only read the repo; do not inherit the org default token.
 permissions:
   contents: read
