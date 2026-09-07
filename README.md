@@ -6,7 +6,7 @@ JWKS-backed ID-token validation, stable `iss`/`sub` identity links, optional
 first-login provisioning, claim-to-role mapping, rate limiting and an audit
 trail.
 
-Warden supports CiviCRM 6.17.2 or newer on PHP 8.4. It is a Standalone-only
+Warden supports the CiviCRM release pinned in `info.xml` or newer on PHP 8.4. It is a Standalone-only
 extension and requires `standaloneusers`, `authx`, SearchKit and FormBuilder.
 The OIDC protocol implementation is provided by
 [`digitalcz/openid-connect`](https://github.com/digitalcz/openid-connect);
@@ -54,7 +54,7 @@ then consider required mode.
 Warden is not tied to a vendor. Every provider goes through the same OIDC
 Discovery, authorization-code/PKCE and signed-ID-token path. Provider-specific
 profiles add configuration diagnostics and E2E coverage; they do not replace
-the generic protocol implementation. The suite currently exercises Keycloak
+the generic protocol implementation. The suite exercises Keycloak
 and a Microsoft Entra ID profile.
 
 ## Microsoft Entra ID profile
@@ -146,7 +146,7 @@ classes of old records.
 
 ## Verified compatibility
 
-The automated suite exercises PHP 8.4 with CiviCRM 6.17.2. Unit, headless,
+The automated suite exercises PHP 8.4 with the CiviCRM release pinned in `info.xml`. Unit, headless,
 static-analysis, formatting, dependency, lifecycle, Keycloak browser and Entra
 profile browser gates run in CI.
 
