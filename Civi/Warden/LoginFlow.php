@@ -6,30 +6,13 @@ namespace Civi\Warden;
 
 use DigitalCz\OpenIDConnect\Exception\InvalidTokenException as OidcInvalidTokenException;
 
-// @mago-expect lint:cyclomatic-complexity
-// The class keeps the security ordering of one protocol flow visible in one
-// place; splitting it would hide the consume/exchange/login boundaries.
+// @mago-expect lint:cyclomatic-complexity -- one protocol flow, its ordering kept visible
 /**
  * The authorization-code flow, start to finish.
  *
- * ORDERING, which is the part that is easy to get wrong and impossible to
- * notice when you do:
- *
- *   consume state  ->  regenerate session  ->  log in
- *
- * `StateStore` binds each state to the session id that created it and compares
- * with `hash_equals`. `authx_login()` ends up in
- * `Civi\Authx\Standalone::loginSession()`, which calls
- * `session_regenerate_id(FALSE)` — same `$_SESSION` contents, new id. So a
- * callback that logged in first and validated afterwards would be comparing
- * the state against an id that did not exist when the state was minted, and
- * would refuse every legitimate login. Regenerating BEFORE the login is still
- * required for its own reason: it is what stops session fixation, where an
- * attacker plants a session id and waits for a victim to authenticate into it.
- *
- * `LoginFlowOrderTest` pins this, because the failure mode of getting it wrong
- * in the other direction — validating against a stale id — is a security hole
- * that looks like a working login.
+ * ORDERING: consume state -> regenerate session -> log in. The state is bound
+ * to the session id that minted it, and `authx_login()` regenerates the id;
+ * regenerating before login is what stops session fixation. `LoginFlowOrderTest` pins this.
  */
 final class LoginFlow {
 
@@ -84,8 +67,7 @@ final class LoginFlow {
     $verifier = Value::str($payload['code_verifier'] ?? NULL);
     $landing = LandingUrl::sanitise(Value::nullableStr($payload['landing'] ?? NULL));
 
-    // 2. Exchange the code. PKCE binds this exchange to the browser that
-    //    started the flow: without the verifier, a stolen code is useless.
+    // 2. Exchange the code; PKCE makes a stolen code useless without the verifier.
     try {
       $tokens = OidcClient::forProvider($provider)
         ->authorizationCode()
@@ -135,9 +117,8 @@ final class LoginFlow {
       );
     }
 
-    // digitalcz has verified the signature, issuer, audience, azp, times and
-    // nonce before exposing this token to Warden. Its mandatory-claim checker
-    // establishes that sub exists, but does not require a non-empty string.
+    // digitalcz has verified signature, issuer, audience, azp, times and nonce;
+    // it requires sub to exist, not to be a non-empty string.
     $allClaims = $idToken->claims();
     $subject = $allClaims['sub'] ?? NULL;
     if (!is_string($subject) || $subject === '') {
@@ -174,9 +155,8 @@ final class LoginFlow {
   private array $lastPayload = [];
 
   /**
-   * Redeem a state and resolve the provider it belongs to. Shared by the
-   * success and the error branch of the callback, so an error response can
-   * neither be attributed to a provider nor counted without a valid state.
+   * Redeem a state and resolve its provider; shared by the success and error
+   * branches, so an error response cannot be counted without a valid state.
    *
    * @param string|null $issuer
    *   The RFC 9207 `iss` response parameter, when the provider sent one.
@@ -184,8 +164,7 @@ final class LoginFlow {
    * @throws \CRM_Core_Exception
    */
   public function consumeState(string $state, ?string $issuer = NULL): Provider {
-    // STATE FIRST — before any session mutation, and before the code is
-    // spent. Single use, so a replay of this whole callback finds nothing.
+    // STATE FIRST, before any session mutation and before the code is spent.
     $payload = $this->states->consume($state);
     if ($payload === NULL) {
       Audit::record(
@@ -232,11 +211,8 @@ final class LoginFlow {
   }
 
   /**
-   * Establish the CiviCRM session.
-   *
-   * Separate from complete() so the ordering above is visible at the call site
-   * and testable without a token: everything that reads state has finished by
-   * the time this runs.
+   * Establish the CiviCRM session. Separate from complete() so the ordering
+   * is visible at the call site and testable without a token.
    *
    * @throws \CRM_Core_Exception
    */
@@ -251,20 +227,14 @@ final class LoginFlow {
       throw new \CRM_Core_Exception('warden needs the authx extension, which is not enabled.');
     }
 
-    // Rotate the session id ourselves rather than relying on core doing it.
-    // `Civi\Authx\Standalone::loginSession()` gained session_regenerate_id() in
-    // 6.13, so on an older Standalone an attacker-planted session id would
-    // survive authentication — classic session fixation. Doing it here makes
-    // the guarantee warden's own, and doing it AFTER state consumption is what
-    // keeps the state binding valid. Regenerating twice on 6.13+ is harmless.
+    // Rotate the session id here (session fixation), AFTER state consumption;
+    // core's own regeneration on top is harmless.
     if (session_status() === PHP_SESSION_ACTIVE) {
       session_regenerate_id(FALSE);
     }
 
     try {
-      // Records $_SESSION['authx'], which `_authx_uf()->loginSession()` alone
-      // does not — so authx's own middleware and anything reading the flow
-      // afterwards sees a properly attributed session.
+      // authx_login() records $_SESSION['authx'], which loginSession() alone does not.
       authx_login([
         'flow' => 'login',
         'useSession' => TRUE,
@@ -291,8 +261,7 @@ final class LoginFlow {
       SessionRegistry::register($provider, $userId, $claims);
     }
     catch (\Throwable $e) {
-      // A login without its revocation binding would silently promise single
-      // logout and then ignore it. Roll the just-created session back instead.
+      // Without its revocation binding the login would silently ignore single logout.
       Audit::record(
         Options::EVENT_LOGIN_FAILURE,
         $provider,

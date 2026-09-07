@@ -48,7 +48,7 @@ class Prune extends AbstractAction {
     $auditDeleted = Audit::prune($this->days);
     $sessionsDeleted = SessionRegistry::prune($this->sessionDays);
     $result->exchangeArray([[
-      // Backward-compatible total used by 0.1.x monitoring integrations.
+      // Total, for monitoring integrations that read one number.
       'deleted' => $auditDeleted + $sessionsDeleted,
       'audit_deleted' => $auditDeleted,
       'sessions_deleted' => $sessionsDeleted,

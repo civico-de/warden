@@ -8,14 +8,9 @@ namespace Civi\Warden;
  * Remembering that this session came from a provider, so logout can offer to
  * end the session at the provider too.
  *
- * The honest limitation, documented rather than hidden: CiviCRM has no logout
- * hook. `CRM_Core_Page_Logout::run()` never calls `parent::run()`, so
- * `hook_civicrm_pageRun` does not fire for it, and `postLogoutUrl()` is
- * hard-coded with no hook of its own. What warden can do is notice the logout
- * route on `civi.invoke.auth` — which fires BEFORE the session is destroyed,
- * and is therefore the last moment the mark is still readable — stash the
- * end-session URL for the length of the request, and swap it in when core
- * redirects.
+ * CiviCRM has no logout hook (`CRM_Core_Page_Logout::run()` skips
+ * `parent::run()`), so the logout route is noticed on `civi.invoke.auth`,
+ * the last moment the mark is readable, and the end-session URL stashed.
  *
  * Back-channel logout is handled separately through SessionRegistry.
  */

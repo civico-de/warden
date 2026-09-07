@@ -7,19 +7,9 @@ namespace Civi\Warden;
 /**
  * Turning claim values into CiviCRM role names.
  *
- * Two rules make this safe, and both are here rather than at the call site:
- *
- * 1. The map is an ALLOW-LIST keyed by claim value. A claim carrying
- *    `administer CiviCRM` grants nothing unless an operator wrote that exact
- *    string on the left-hand side and chose what it means on the right — so
- *    the IdP cannot name a CiviCRM permission and be believed.
- * 2. The right-hand side is a role NAME, never a permission string. Roles are
- *    a CiviCRM-side object an operator curates; permissions are not. Standalone
- *    also silently drops permission strings that no extension registered via
- *    hook_civicrm_permission on role save, so a permission arriving this way
- *    would not even fail loudly — it would just quietly not happen.
- *
- * Pure: no API calls, no database. Resolving names to ids is the caller's job.
+ * The map is an ALLOW-LIST keyed by claim value, so the IdP cannot name a
+ * CiviCRM permission and be believed, and its right-hand side is a role NAME,
+ * never a permission string. Pure; resolving names to ids is the caller's job.
  */
 final class RoleMapper {
 
@@ -52,11 +42,8 @@ final class RoleMapper {
   }
 
   /**
-   * Every role name the map could ever produce.
-   *
-   * This is the scope `every_login` sync is allowed to touch. A role outside it
-   * — one an administrator granted by hand — is never removed, because the IdP
-   * was never given authority over it.
+   * Every role name the map could ever produce: the scope `every_login` sync
+   * may touch. A hand-granted role outside it is never removed.
    *
    * @return list<string>
    */

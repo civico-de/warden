@@ -7,21 +7,11 @@ namespace Civi\Warden;
 /**
  * The lock-out escape hatch.
  *
- * Every mechanism warden has for denying password login is enforced by warden
- * itself, which means a misconfigured provider plus a strict mode is a locked
- * door with the key inside. Three ways back in, in order of how much access
- * they need:
- *
- * 1. `define('CIVICRM_WARDEN_DISABLE', TRUE);` in civicrm.settings.php. Needs
- *    filesystem access, takes effect on the next request, and cannot be undone
- *    from the UI — so an attacker who compromises an admin session cannot turn
- *    it off, and an operator who has lost their admin session can still get in.
- * 2. The `warden_enabled` setting, for an administrator who still has a session.
- * 3. `cv ext:disable warden`, which removes the listeners entirely.
- *
- * On top of those, `warden_protect_admin_password_login` (on by default) keeps
- * password login and password reset working for holders of
- * `administer CiviCRM` even in `required` mode.
+ * A misconfigured provider plus a strict mode is a locked door with the key
+ * inside. Three ways back in: `define('CIVICRM_WARDEN_DISABLE', TRUE)` in
+ * civicrm.settings.php (filesystem only, not undoable from the UI), the
+ * `warden_enabled` setting, and `cv ext:disable warden`. Additionally
+ * `warden_protect_admin_password_login` keeps password login for `administer CiviCRM`.
  */
 final class Escape {
 
@@ -44,10 +34,7 @@ final class Escape {
 
   /**
    * May this user still use a password, whatever a provider's mode says?
-   *
-   * Answered for a specific user id because the events that need it fire
-   * before there is a session — `pre_credentials_check` knows only which
-   * account is being attempted.
+   * By user id: the events that need it fire before there is a session.
    */
   public static function passwordLoginProtected(?int $userId): bool {
     if (!Value::bool(\Civi::settings()->get('warden_protect_admin_password_login'), TRUE)) {

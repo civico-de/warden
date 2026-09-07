@@ -9,22 +9,14 @@ use Civi\Core\Service\AutoSubscriber;
 use Civi\Warden\Secret;
 use Civi\Warden\Value;
 
-// @mago-expect lint:cyclomatic-complexity
-// Encrypt-or-refuse plus the activation guard; both are the same rule.
+// @mago-expect lint:cyclomatic-complexity -- encrypt-or-refuse plus the activation guard
 /**
  * Encrypting the client secret on the way into the database, and refusing the
  * write when that is not possible.
  *
- * This sits on `hook_civicrm_pre` rather than in the Afform or the API entity
- * so it covers every route that can write a provider — the admin form, an
- * APIv4 call, a managed record, a migration script. A rule that only the UI
- * enforces is not a rule.
- *
- * The refusal is the point. Core's `crypto.token` would happily "encrypt" with
- * a no-op cipher on a site with no CIVICRM_CRED_KEYS and return something that
- * looks like a token, leaving a readable secret in a column everyone assumes is
- * encrypted. warden fails the write instead, with a message naming the constant
- * to define.
+ * On `hook_civicrm_pre` so every write route is covered, not only the UI.
+ * The refusal is the point: core's `crypto.token` would "encrypt" with a
+ * no-op cipher without CIVICRM_CRED_KEYS (see Secret).
  */
 final class ProviderSecretSubscriber extends AutoSubscriber {
 
@@ -39,9 +31,8 @@ final class ProviderSecretSubscriber extends AutoSubscriber {
    * @throws \CRM_Core_Exception
    */
   public static function onPre(PreEvent $event): void {
-    // PreEvent names these `entity` and `action`, NOT `objectName` and `op`
-    // as the hook signature suggests. Reading the wrong property yields NULL
-    // and the guard below then silently matches nothing at all.
+    // PreEvent names these `entity`/`action`, not `objectName`/`op`; the
+    // wrong property yields NULL and the guard silently matches nothing.
     if ($event->entity !== 'WardenProvider') {
       return;
     }

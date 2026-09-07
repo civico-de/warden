@@ -13,15 +13,9 @@ use CRM_Warden_ExtensionUtil as E;
 /**
  * The sign-in buttons on Standalone's login screen.
  *
- * `CRM_Standaloneusers_Page_Login::run()` does call `parent::run()`, so
- * `hook_civicrm_pageRun` fires and a region contribution works. The screen
- * itself is Angular (`<crm-login>`), so the markup lands in `page-body`
- * alongside it rather than inside the form — which is honest about what it is:
- * a separate way in, not a field on the password form.
- *
- * In `required` mode the buttons are still rendered, and the password form is
- * refused by PasswordLoginSubscriber rather than hidden. Hiding a form that
- * still works would be theatre; refusing it and saying so is the policy.
+ * A `hook_civicrm_pageRun` region contribution; the screen is Angular, so the
+ * markup lands in `page-body` beside the form. In `required` mode the password
+ * form stays visible and is refused by PasswordLoginSubscriber.
  */
 final class LoginScreenSubscriber extends AutoSubscriber {
 
@@ -36,9 +30,7 @@ final class LoginScreenSubscriber extends AutoSubscriber {
     /** @var mixed $page */
     $page = $event->page ?? NULL;
 
-    // class_exists first: warden declares standaloneusers as a requirement,
-    // but a half-uninstalled site must not fatal on the login screen of all
-    // places.
+    // class_exists first: a half-uninstalled site must not fatal on the login screen.
     if (!class_exists(\CRM_Standaloneusers_Page_Login::class) || !$page instanceof \CRM_Standaloneusers_Page_Login) {
       return;
     }
@@ -77,8 +69,7 @@ final class LoginScreenSubscriber extends AutoSubscriber {
         '<a class="crm-button warden-login-button" href="%s" rel="nofollow">%s</a>',
         htmlspecialchars($url, ENT_QUOTES, 'UTF-8'),
         htmlspecialchars(
-          // The label is operator-supplied, so it is escaped like any other
-          // untrusted string even though an operator is not an attacker.
+          // Operator-supplied, escaped like any untrusted string.
           E::ts('Sign in with %1', [1 => $provider->label]),
           ENT_QUOTES,
           'UTF-8',

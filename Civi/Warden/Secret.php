@@ -7,18 +7,9 @@ namespace Civi\Warden;
 /**
  * Client-secret handling.
  *
- * Core's `crypto.token` degrades silently: `CryptoRegistry::createDefaultRegistry()`
- * always registers a plaintext key tagged CRED at weight 32768, so on a site
- * with no `CIVICRM_CRED_KEYS` an `encrypt()` call still succeeds and still
- * returns a token — one whose "cipher" is the identity function. Nothing warns
- * and nothing throws; the secret is simply sitting in the database in the
- * clear, next to a column named `client_secret` that everybody will assume is
- * encrypted.
- *
- * warden refuses that trade. `protect()` throws when no real key is
- * configured, so the write fails loudly instead of producing a database row
- * that lies about itself, and StatusCheck reports the same condition before
- * anybody tries.
+ * Core's `crypto.token` degrades silently: without `CIVICRM_CRED_KEYS` the
+ * default registry "encrypts" with a plaintext key and nothing warns.
+ * `protect()` throws instead, so the write fails loudly.
  */
 final class Secret {
 
@@ -33,10 +24,8 @@ final class Secret {
   }
 
   /**
-   * Is a real CRED key configured?
-   *
-   * The plaintext key is registered unconditionally, so the question is not
-   * "is there a CRED key" but "is the one we would get an actual cipher".
+   * Is a real CRED key configured? The plaintext key is registered
+   * unconditionally, so the question is whether the winning one is a cipher.
    */
   public static function keyAvailable(): bool {
     try {
@@ -75,12 +64,8 @@ final class Secret {
   }
 
   /**
-   * Decrypt a stored client secret.
-   *
-   * NULL means a secret is stored but cannot be read (key lost after a bad
-   * restore, rotated CIVICRM_CRED_KEYS). Reading does not throw so the
-   * provider screen and the status check still open; the caller decides that
-   * such a provider is unusable rather than silently a public client.
+   * Decrypt a stored client secret. NULL means stored but unreadable (lost
+   * or rotated key); does not throw so the provider screen still opens.
    */
   public static function reveal(?string $stored): ?string {
     if ($stored === NULL || $stored === '') {
@@ -97,19 +82,13 @@ final class Secret {
 
   /**
    * Is this stored value ciphertext, or plaintext wearing a token wrapper?
-   *
-   * Used by the status check to tell an operator that a specific provider
-   * needs re-saving after they configure a key, rather than only that the key
-   * is missing.
    */
   public static function isProtected(?string $stored): bool {
     if ($stored === NULL || $stored === '') {
       return TRUE;
     }
 
-    // With the `plain` suite CryptoToken::encrypt() returns the input
-    // untouched — no wrapper, no marker — so the only way to tell ciphertext
-    // from a bare secret is the delimiter test the class exposes itself.
+    // The `plain` suite returns the input untouched, so only the delimiter test tells.
     try {
       return !self::token()->isPlainText($stored);
     }

@@ -16,10 +16,9 @@ name: warden
 services:
   app:
     image: ${CIVIKITCHEN_IMAGE:-ghcr.io/jfilter/civikitchen:v1}
-    # :v1 is the released contract image, matching the @v1 CI pin. Override
-    # CIVIKITCHEN_IMAGE to pin a specific CiviCRM minor (e.g.
-    # ghcr.io/jfilter/civikitchen:standalone-6.15) for this extension. Always
-    # pull so a stale local layer doesn't mask entrypoint fixes.
+    # :v1 matches the @v1 CI pin; CIVIKITCHEN_IMAGE pins a CiviCRM minor
+    # (e.g. ghcr.io/jfilter/civikitchen:standalone-6.15). Always pull so a
+    # stale local layer doesn't mask entrypoint fixes.
     pull_policy: always
     depends_on:
       db:
@@ -38,16 +37,13 @@ services:
       # Outbound mail lands in maildev.
       CIVIKITCHEN_SMTP_HOST: maildev
       CIVIKITCHEN_SMTP_PORT: "1025"
-      # Enable the mounted extension reproducibly on first boot. Add sibling
-      # extensions here (comma-separated) instead of coupling them in info.xml
-      # when the integration is optional by design.
+      # Comma-separated; optional sibling extensions go here, not into info.xml.
       CIVIKITCHEN_ENABLE_EXTENSIONS: "warden"
     volumes:
       - ..:/var/www/html/ext/warden
       # Sibling extension example (mount + add to CIVIKITCHEN_ENABLE_EXTENSIONS):
       # - ../../othersibling:/var/www/html/ext/othersibling
-      # First-boot provisioning hooks (seed data, API users, settings) — run
-      # after install + ext:enable, in lexical order. See init.d/README.md.
+      # First-boot hooks, run after install + ext:enable in lexical order. See init.d/README.md.
       - ./init.d:/civikitchen-init.d:ro
 
   db:

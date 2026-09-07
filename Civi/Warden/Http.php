@@ -22,14 +22,11 @@ final class Http {
     }
 
     $options = [
-      // Short and total. An identity provider that cannot answer discovery in
-      // five seconds is down, and a login route that hangs is a denial of
-      // service against the whole site, not just against SSO.
+      // Short and total: a hanging login route is a denial of service against the site.
       'timeout' => 3.0,
       'max_duration' => 5.0,
-      // The decorator validates only the URL passed to request(); Symfony
-      // follows later hops internally. Refuse redirects so an HTTPS token or
-      // JWKS request cannot be downgraded behind that boundary.
+      // The decorator validates only the first URL; refuse redirects so a
+      // request cannot be downgraded behind that boundary.
       'max_redirects' => 0,
       'headers' => ['Accept' => 'application/json'],
     ];

@@ -7,15 +7,8 @@ namespace Civi\Warden;
 /**
  * The `redirect_uri` registered with the provider.
  *
- * Built from `CRM_Utils_System::url(..., TRUE)`, which resolves against
- * `CIVICRM_UF_BASEURL` — never from `$_SERVER['HTTP_HOST']` or `REQUEST_URI`.
- *
- * Behind the civico edge proxy those request variables carry whatever the
- * proxy passed on, and an attacker who can set a Host header could otherwise
- * make warden send the provider a redirect_uri pointing somewhere else. The
- * provider's own allow-list is the backstop, but the value must be stable
- * anyway: it is compared byte for byte at the token endpoint, so a redirect_uri
- * that varies by request breaks the exchange even when nobody is attacking.
+ * Built from `CIVICRM_UF_BASEURL`, never from `$_SERVER['HTTP_HOST']`: a
+ * Host header must not steer it, and the token endpoint compares it byte for byte.
  */
 final class RedirectUri {
 
@@ -27,9 +20,6 @@ final class RedirectUri {
 
   /**
    * Does this site have a base URL that can produce a usable redirect_uri?
-   *
-   * Reported by StatusCheck, because "the provider says redirect_uri mismatch"
-   * is otherwise a very long afternoon.
    */
   public static function looksResolvable(): bool {
     $uri = self::get();

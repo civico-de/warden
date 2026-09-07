@@ -4,29 +4,14 @@ declare(strict_types = 1);
 
 namespace Civi\Warden;
 
-// @mago-expect lint:cyclomatic-complexity
-// Expiry, single use and session binding are three rules on one small object.
+// @mago-expect lint:cyclomatic-complexity -- three rules on one small object
 /**
  * warden's own store for in-flight authorization requests.
  *
- * It does NOT use `Civi::service('oauth2.state')`. The bundled `oauth-client`
- * extension has useful session-bound state and PKCE-verifier storage, but its
- * generic ID-token resource-owner path only decodes the JWT payload. Warden
- * therefore keeps the protocol library and the one-time authorization state
- * in one boundary, and adds its own nonce and callback policy. See
- * docs/adr/0001-no-oauth-client.md.
- *
- * Three rules, all enforced here rather than by the caller:
- *
- * 1. SINGLE USE. `consume()` deletes before it returns. A replayed callback —
- *    the same code and the same ID token a second time — finds nothing, which
- *    is what makes nonce replay impossible rather than merely unlikely.
- * 2. BOUND TO THE SESSION. An entry created in one browser session cannot be
- *    redeemed from another. This is why the login flow must consume state
- *    BEFORE authx_login() regenerates the session id — see the ordering note
- *    on LoginFlow.
- * 3. EXPIRED IS GONE. Entries past their TTL are pruned on every access, so a
- *    tab left open overnight cannot be completed the next morning.
+ * Not `Civi::service('oauth2.state')`; see docs/adr/0001-no-oauth-client.md.
+ * Three rules: SINGLE USE (`consume()` deletes before it returns, so a replayed
+ * callback finds nothing), BOUND TO THE SESSION (hence consume BEFORE
+ * authx_login() regenerates the id, see LoginFlow), EXPIRED IS GONE.
  */
 final class StateStore {
 
@@ -58,10 +43,7 @@ final class StateStore {
   public function remember(string $state, array $payload, ?int $now = NULL): string {
     $now ??= time();
 
-    // Fail closed with no session. `session_id()` returns '' when none is
-    // started, and an empty id would bind the state to '' — which then
-    // hash_equals('') on the way back and matches ANY caller, quietly turning
-    // the session binding off instead of enforcing it.
+    // Fail closed: an empty session id would bind the state to '' and match ANY caller.
     $session = $this->storage->sessionId();
     if ($session === '') {
       throw new \CRM_Core_Exception('warden cannot start a login without a session.');
@@ -105,8 +87,7 @@ final class StateStore {
   public function consume(string $state, ?int $now = NULL): ?array {
     $now ??= time();
 
-    // Same fail-closed rule as create(): without a session there is nothing to
-    // bind to, and comparing '' with '' would accept anybody.
+    // Same fail-closed rule as create().
     $session = $this->storage->sessionId();
     if ($session === '') {
       return NULL;
@@ -115,8 +96,7 @@ final class StateStore {
     $states = $this->prune($this->storage->read(), $now);
 
     $entry = $states[$state] ?? NULL;
-    // Delete first, whatever happens next. A state that has been presented is
-    // spent even if it turns out to be invalid.
+    // Delete first: a presented state is spent even if it turns out invalid.
     unset($states[$state]);
     $this->storage->write($states);
 

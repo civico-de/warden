@@ -16,11 +16,8 @@ use Civi\Warden\Value;
 /**
  * `civicrm/warden/login` — start an authorization-code flow.
  *
- * Public by necessity: the visitor is anonymous. Every gate the flow has is
- * therefore checked HERE and not only on the button that usually leads here.
- * The prior art got this wrong — its login route ran a full provisioning login
- * even with the extension's mode set to `disabled`, because only the button
- * consulted the mode.
+ * Public by necessity, so every gate the flow has is checked HERE and not
+ * only on the button that usually leads here.
  */
 final class LoginPage {
 
@@ -33,9 +30,7 @@ final class LoginPage {
     $provider = $providerId === NULL ? NULL : ProviderRepository::find($providerId);
 
     if ($providerId === NULL) {
-      // Only an omitted id may fall back to the sole provider. An explicit
-      // unknown id is refused; silently selecting another provider makes a
-      // stale or manipulated login link mean something it did not request.
+      // Only an omitted id may fall back to the sole provider; an unknown one is refused.
       $usable = ProviderRepository::usable();
       $provider = count($usable) === 1 ? $usable[0] : NULL;
     }

@@ -4,16 +4,13 @@ declare(strict_types = 1);
 
 namespace Civi\Warden;
 
-// @mago-expect lint:cyclomatic-complexity
-// Type narrowing is branch-heavy by definition; that is the whole job.
+// @mago-expect lint:cyclomatic-complexity -- type narrowing is branch-heavy by definition
 /**
  * Reading untyped values — APIv4 rows, decoded JSON, request parameters —
  * without lying about what came back.
  *
- * `(string) $row['x']` is what these replace. That cast is not merely a static
- * analysis complaint: on an array it emits a notice and yields "Array", and on
- * NULL it silently produces "", so a missing column and an empty one become
- * indistinguishable at exactly the places where warden decides who gets in.
+ * A bare cast yields "Array" on an array and "" on NULL, making a missing
+ * column and an empty one indistinguishable where warden decides who gets in.
  */
 final class Value {
 

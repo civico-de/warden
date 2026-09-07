@@ -14,22 +14,10 @@ use Civi\Warden\Value;
 /**
  * RP-initiated logout.
  *
- * CiviCRM has no logout hook. `CRM_Core_Page_Logout::run()` never calls
- * `parent::run()`, so `hook_civicrm_pageRun` does not fire, and
- * `postLogoutUrl()` is a hard-coded string with no hook of its own. Two events
- * bracket it:
- *
- * - `civi.invoke.auth` (CRM/Core/Invoke.php) fires while the session is still
- *   alive, which is the last moment the provider mark is readable. That is
- *   where the end-session URL is resolved and stashed.
- * - `hook_civicrm_alterRedirect` fires as core redirects afterwards and hands
- *   the URI by reference, which is where the stashed URL replaces core's
- *   `/civicrm/login?justLoggedOut`.
- *
- * Provider-initiated back-channel logout uses a separate public endpoint. It
- * persists an exact session revocation, which
- * SessionRevocationSubscriber enforces before the browser's next CiviCRM
- * route. See docs/adr/0002-oidc-single-logout.md.
+ * CiviCRM has no logout hook, so two events bracket it: `civi.invoke.auth`
+ * (session still alive, the end-session URL is stashed) and
+ * `hook_civicrm_alterRedirect` (the stashed URL replaces core's redirect).
+ * Back-channel logout is separate; see docs/adr/0002-oidc-single-logout.md.
  */
 final class LogoutSubscriber extends AutoSubscriber {
 

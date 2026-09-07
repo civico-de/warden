@@ -7,14 +7,11 @@ policy:
   npm_license: UNLICENSED
   copyright: 'civico GmbH'
 
-  # heraldChecks is herald's OWN invented hook; warden implements it to expose
-  # provider reachability and key-rollover health. Not a core hook, so ckconform
-  # cannot know it.
+  # heraldChecks is herald's own hook, not a core one.
   known_hooks:
     - heraldChecks
 
-  # Raise once measured with ckcoverage; ratchet up, never down to make a red
-  # build green.
+  # Ratchet up, never down to make a red build green.
   coverage:
     minimum: 90
 

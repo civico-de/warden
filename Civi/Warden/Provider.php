@@ -4,9 +4,7 @@ declare(strict_types = 1);
 
 namespace Civi\Warden;
 
-// @mago-expect lint:cyclomatic-complexity
-// Parsing one untrusted row into a typed object; the branches are the
-// validation.
+// @mago-expect lint:cyclomatic-complexity -- the branches are the validation
 /**
  * A configured provider as the flow sees it: typed, with the JSON columns
  * already decoded and the secret already revealed. Built by ProviderRepository;
@@ -20,9 +18,7 @@ final class Provider {
    * @param array<string, list<string>> $roleMap
    *   Claim value => list of CiviCRM role names.
    */
-  // @mago-expect lint:excessive-parameter-list
-  // A readonly value object for one provider row. It is private and has a
-  // single caller (fromArray), which is what keeps the width safe.
+  // @mago-expect lint:excessive-parameter-list -- a readonly value object, single caller
   private function __construct(
     public readonly int $id,
     public readonly string $name,

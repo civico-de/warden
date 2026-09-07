@@ -9,23 +9,12 @@ use Civi\Api4\WardenAudit;
 /**
  * warden's login trail.
  *
- * Core Standalone writes none: `Civi\Api4\Action\User\Login` carries a comment
- * inviting extensions to add flood control and auditing, and that is the whole
- * of it. So an SSO deployment with no trail could not answer "who logged in as
- * this account, from where, and when did we start refusing them".
- *
- * What is NEVER written here, at any log level: an ID token, an access token, a
- * refresh token, an authorization code, an email address, a display name, or a
- * raw `sub`. The subject is stored as a salted digest so rows about one remote
- * identity can be correlated without the identifier being recoverable from a
- * database dump.
+ * Core Standalone writes no login trail. NEVER written here: tokens, codes,
+ * email addresses, display names or a raw `sub`; the subject is a salted digest.
  */
 final class Audit {
 
-  // @mago-expect lint:excessive-parameter-list
-  // One audit row has these six independent facts and no natural sub-grouping;
-  // bundling them into an array would trade a checked signature for a hash
-  // whose keys are typo-able at every call site.
+  // @mago-expect lint:excessive-parameter-list -- six independent facts, no sub-grouping
   public static function record(
     string $event,
     ?Provider $provider = NULL,
@@ -47,8 +36,7 @@ final class Audit {
         ->execute();
     }
     catch (\Throwable $e) {
-      // An audit failure must not become a login failure — but it must not be
-      // silent either, or the trail's own gaps become invisible.
+      // Must not become a login failure, must not be silent either.
       \Civi::log()->error('warden: could not write an audit record ({event}): {msg}', [
         'event' => $event,
         'msg' => $e->getMessage(),
@@ -57,9 +45,8 @@ final class Audit {
   }
 
   /**
-   * Salted with the site key so the same subject hashes differently on
-   * different sites, and so a dump of this table alone cannot be attacked with
-   * a precomputed table of likely identifiers.
+   * Salted with the site key: differs per site, and a dump of this table
+   * alone cannot be attacked with a precomputed table.
    */
   public static function hashSubject(string $subject): string {
     $salt = Value::str(\CRM_Utils_Constant::value('CIVICRM_SITE_KEY'));
@@ -68,11 +55,8 @@ final class Audit {
   }
 
   /**
-   * The client address, as CiviCRM sees it.
-   *
-   * `CRM_Utils_System::ipAddress()` already honours the trusted-proxy handling
-   * core applies elsewhere; re-deriving it from `X-Forwarded-For` here would
-   * mean trusting a header any client can set.
+   * The client address as CiviCRM sees it; `ipAddress()` already honours the
+   * trusted-proxy handling, `X-Forwarded-For` alone is client-settable.
    */
   public static function clientIp(): ?string {
     $ip = \CRM_Utils_System::ipAddress();

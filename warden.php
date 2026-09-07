@@ -10,10 +10,8 @@ if (!is_file($wardenAutoload)) {
 }
 $wardenLoader = require_once $wardenAutoload;
 if ($wardenLoader instanceof \Composer\Autoload\ClassLoader) {
-  // Composer prepends loaders by default. That would let transitive extension
-  // packages shadow CiviCRM's own dependency versions (Brick Math exposed
-  // this as a hard fatal). Append Warden's loader so Core remains authoritative
-  // for shared packages while Warden-only namespaces still resolve normally.
+  // Appended, not prepended: a transitive package must not shadow core's own
+  // dependency versions (Brick Math fatals otherwise).
   $wardenLoader->unregister();
   $wardenLoader->register(FALSE);
 }
@@ -44,9 +42,7 @@ function warden_civicrm_enable(): void {
  * Two levels: reading the login trail must not require the power to
  * reconfigure single sign-on, so auditors get `view warden log` alone.
  *
- * Declared here rather than assigned anywhere, and that ordering matters on
- * Standalone: a permission string that no extension has registered via this
- * hook is silently dropped when a role is saved. Declare first, assign second.
+ * Standalone silently drops unregistered permission strings on role save.
  *
  * @param array<string, array<string, mixed>> $permissions
  */
@@ -80,12 +76,8 @@ function warden_civicrm_check(&$messages, $statusNames = [], bool $includeDisabl
 }
 
 /**
- * hook_civicrm_heraldChecks — expose sign-on health to herald's monitor
- * (herald >= 0.3). Fires only when herald is installed and dispatches the
- * hook, so the dependency stays fully optional.
- *
- * One named check per provider keeps an IdP outage attributable without
- * collapsing every configured provider into one aggregate result.
+ * hook_civicrm_heraldChecks (herald >= 0.3): one named check per provider,
+ * so an IdP outage stays attributable.
  *
  * @param array<string, callable> $checks
  */
@@ -126,8 +118,7 @@ function warden_civicrm_heraldChecks(array &$checks): void {
         \Civi\Warden\OidcClient::metadataFor($provider);
       }
       catch (\Throwable $e) {
-        // A `required` provider that is down is a site nobody can log into,
-        // so it says so rather than leaving the reader to infer it.
+        // A `required` provider that is down is a site nobody can log into.
         $lead = $provider->mode === \Civi\Warden\Options::MODE_REQUIRED
           ? 'REQUIRED provider unreachable: '
           : 'provider unreachable: ';

@@ -40,19 +40,15 @@ final class Claims {
   }
 
   /**
-   * Identity, typed as mixed. The descent variable has to start out mixed or
-   * its first assignment pins it to array and every later one is a type error.
+   * Identity, typed as mixed, so the descent variable is not pinned to array.
    */
   private static function wrap(mixed $value): mixed {
     return $value;
   }
 
   /**
-   * A claim read as a list of strings.
-   *
-   * Providers are inconsistent here: Keycloak sends an array, Entra ID sends
-   * an array, some send a single string, and some send a space-separated
-   * string. All three shapes mean the same thing to a role mapper.
+   * A claim read as a list of strings: an array, a single string or a
+   * space-separated string, depending on the provider.
    *
    * @param array<string, mixed> $claims
    *

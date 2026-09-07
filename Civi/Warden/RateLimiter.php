@@ -9,14 +9,9 @@ use Civi\Api4\WardenAudit;
 /**
  * A brake on the callback route.
  *
- * Core has none — there is no login flood control anywhere in Standalone — so
- * without this an attacker can replay guessed states, malformed tokens and
- * stolen codes as fast as the server answers, and every attempt costs warden
- * an outbound token-endpoint request. The limiter counts FAILURES per source
- * address, so a working provider and a busy office are never throttled.
- *
- * The counter is the audit table itself: one source of truth, and a limiter
- * that cannot disagree with the trail an operator is reading.
+ * Standalone has no login flood control, and every attempt costs an outbound
+ * token-endpoint request. Counts FAILURES per source address, read from the
+ * audit table itself, so a busy office is never throttled.
  */
 final class RateLimiter {
 
@@ -32,9 +27,7 @@ final class RateLimiter {
 
     $ip ??= Audit::clientIp();
     if ($ip === NULL) {
-      // No usable address means no way to attribute attempts. Failing open is
-      // the deliberate choice: the alternative locks out an entire site whose
-      // proxy configuration hides client addresses.
+      // Failing open: the alternative locks out a site whose proxy hides client addresses.
       return TRUE;
     }
 

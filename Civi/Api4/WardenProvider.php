@@ -7,10 +7,8 @@ namespace Civi\Api4;
 /**
  * A configured OpenID Connect provider.
  *
- * `administer warden` throughout: the row carries a client secret and decides
- * who may log in, so reading it is as sensitive as writing it. The login flow
- * itself reads providers with permissions off — an anonymous visitor must be
- * able to start a login without being able to enumerate providers over the API.
+ * `administer warden` throughout: the row carries a client secret, so reading
+ * is as sensitive as writing. The login flow reads with permissions off.
  *
  * @searchable secondary
  * @orderBy weight

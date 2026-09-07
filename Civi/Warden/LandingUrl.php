@@ -7,15 +7,8 @@ namespace Civi\Warden;
 /**
  * Where a user is sent after a successful login.
  *
- * `CRM_Utils_System::redirect()` does no validation whatsoever, and Standalone's
- * own login form already forwards an unvalidated `originalUrl`. A login
- * endpoint that echoes a caller-supplied destination is an open redirect, and
- * an open redirect on the login route is a phishing primitive: the victim sees
- * the real site, authenticates for real, and is handed to the attacker.
- *
- * So warden accepts one shape only — a site-relative path — and normalises
- * everything else to the home page. Pure, and tested against the usual
- * bypasses.
+ * An open redirect on the login route is a phishing primitive, so only a
+ * site-relative path is accepted; everything else becomes the home page.
  */
 final class LandingUrl {
 
@@ -31,10 +24,8 @@ final class LandingUrl {
       return self::DEFAULT_PATH;
     }
 
-    // Control characters, spaces and DEL are how a payload is smuggled past a
-    // naive prefix check; a real path has none. Tested on the RAW string and
-    // before anything else, because trim() strips NUL — so trimming first
-    // would quietly erase exactly the byte this rejects.
+    // Control characters, spaces and DEL smuggle payloads past prefix checks.
+    // Tested on the RAW string: trim() would strip the NUL this rejects.
     if (preg_match('/[\x00-\x20\x7F]/', $candidate) === 1) {
       return self::DEFAULT_PATH;
     }
@@ -59,10 +50,7 @@ final class LandingUrl {
   }
 
   /**
-   * The sanitised path as an absolute URL on this site.
-   *
-   * Built from CIVICRM_UF_BASEURL rather than the request, for the same reason
-   * the redirect_uri is — see RedirectUri.
+   * The sanitised path as an absolute URL, built from CIVICRM_UF_BASEURL (see RedirectUri).
    */
   public static function absolute(?string $candidate): string {
     $base = rtrim(Value::str(\CRM_Utils_Constant::value('CIVICRM_UF_BASEURL')), '/');

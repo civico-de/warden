@@ -7,15 +7,9 @@ namespace Civi\Warden;
 /**
  * State kept in the CiviCRM session.
  *
- * `session_id()` is read live on every call rather than captured, which is
- * what makes the ordering constraint in LoginFlow observable: after
- * `authx_login()` has regenerated the id, a state created before it no longer
- * matches, and `StateStore::consume()` refuses. Consuming first is therefore
- * not a stylistic preference — it is the only order that works.
- *
- * Deliberately not `final`: the headless suite overrides `sessionId()`,
- * because the CLI SAPI cannot start a PHP session once PHPUnit has written
- * output and a skipped ordering test would prove nothing.
+ * `session_id()` is read live on every call, so a state minted before
+ * `authx_login()` regenerated the id does not match afterwards (see the
+ * ordering in LoginFlow). Not `final`: the headless suite overrides `sessionId()`.
  */
 class CiviStateStorage implements StateStorage {
 

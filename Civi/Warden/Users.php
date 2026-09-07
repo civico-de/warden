@@ -8,36 +8,23 @@ use Civi\Api4\Contact;
 use Civi\Api4\Role;
 use Civi\Api4\User;
 
-// @mago-expect lint:cyclomatic-complexity
-// A thin, defensive facade over APIv4 User/Role writes.
+// @mago-expect lint:cyclomatic-complexity -- a defensive facade over User/Role writes
 /**
  * Everything warden does to `civicrm_uf_match` and `civicrm_user_role`.
  *
- * `checkPermissions(FALSE)` throughout, and not as a shortcut: APIv4's
- * `WriteTrait::validateValues()` requires a logged-in user, and warden is
- * writing these rows for an anonymous visitor who is in the middle of proving
- * who they are. There is no session yet by construction.
+ * `checkPermissions(FALSE)` throughout: `WriteTrait::validateValues()` needs
+ * a logged-in user, and these rows are written for a visitor still proving who they are.
  */
 final class Users {
 
   /**
-   * Does this user hold this permission?
-   *
-   * Asked of Standalone's own Security service, which is the authority and
-   * caches per user. `CRM_Core_Config::singleton()->userSystem` is NOT used:
-   * only the Standalone UF class resolves a permission for an arbitrary user
-   * id, and under `CIVICRM_UF=UnitTests` — the headless suite — it silently
-   * answers for the current user instead. That difference is the whole
-   * administrator escape hatch, so it may not depend on which UF class
-   * happens to be loaded.
-   *
-   * The fallback resolves roles to permissions directly, so the answer stays
-   * correct if the service ever moves.
+   * Asked of Standalone's Security service, not `userSystem`: under
+   * `CIVICRM_UF=UnitTests` the UF class silently answers for the current user,
+   * and the admin escape hatch must not depend on that.
    */
   public static function hasPermission(int $userId, string $permission): bool {
-    // `standaloneusers.security` is the 6.15+ service; Security::singleton()
-    // is deprecated there and is the only route on 6.14. Try the service
-    // first so warden does not call a deprecated method on a modern site.
+    // The `standaloneusers.security` service first; Security::singleton() is
+    // the older route.
     try {
       $security = \Civi::container()->has('standaloneusers.security')
         ? \Civi::service('standaloneusers.security')
@@ -110,20 +97,15 @@ final class Users {
       ->addClause('OR', ['username', '=', $email], ['uf_name', '=', $email])
       ->execute();
 
-    // Ambiguous is refused, not guessed: two accounts sharing an address is
-    // exactly the situation where picking one silently is a takeover.
+    // Ambiguous is refused, not guessed: picking one silently is a takeover.
     $user = count($users) === 1 ? $users->first() : NULL;
 
     return is_array($user) ? Value::row($user) : NULL;
   }
 
   /**
-   * Create a CiviCRM user and its contact.
-   *
-   * The password is random and is never shown to anybody. A provisioned account
-   * has to be usable only through the identity provider; leaving the column
-   * empty or predictable would make SSO provisioning a way to create
-   * password-loginable accounts.
+   * Create a CiviCRM user and its contact. The password is random and never
+   * shown: a provisioned account is usable only through the provider.
    *
    * @param list<string> $roleNames
    *
@@ -193,12 +175,8 @@ final class Users {
   }
 
   /**
-   * Role ids for a list of names.
-   *
-   * Names that match nothing are dropped rather than created. warden mapping a
-   * claim onto a role that does not exist is a configuration error an operator
-   * has to see in the status check — it is not licence to invent a role, and
-   * inventing one would mean the IdP decides what roles a site has.
+   * Role ids for a list of names. Unknown names are dropped, never created:
+   * the IdP must not decide what roles a site has.
    *
    * @param list<string> $names
    *

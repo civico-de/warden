@@ -14,32 +14,15 @@ use Civi\Warden\Options;
 use Civi\Warden\ProviderRepository;
 use Civi\Warden\Value;
 
-// @mago-expect lint:cyclomatic-complexity
-// Three denial layers that must agree; separating them would make it easy for
-// one to drift.
+// @mago-expect lint:cyclomatic-complexity -- three denial layers that must agree
 /**
  * Denying password login in `required` mode.
  *
- * It takes THREE listeners, not one, because Standalone has three different
- * ways in and they do not share a check:
- *
- * 1. `civi.standalone.login` at `pre_credentials_check` — the ordinary
- *    username/password submit. Setting `stopReason` is how core is told to
- *    refuse. The same event at `pre_send_password_reset` covers "email me a
- *    reset link".
- * 2. `civi.standalone.checkPassword` — the actual hash comparison. Core's own
- *    listener sits at -500 and defers when `$success` is already decided, so a
- *    listener at any HIGHER priority (0 here) that sets `$success = FALSE`
- *    wins outright. Belt and braces: layer 1 is the documented path, this is
- *    the one that holds if a future code path forgets to fire the LoginEvent.
- * 3. `civi.api.authorize` — because `User.passwordReset` fires NO LoginEvent
- *    at all. Without this listener, a site in `required` mode still hands out
- *    password resets over the API, which is the whole policy undone.
- *
- * All three consult `Escape` first, and all three exempt holders of
- * `administer CiviCRM` while `warden_protect_admin_password_login` is on — the
- * default — so a broken identity provider is an outage for staff and not a
- * permanent lock-out for the site owner.
+ * Three listeners, because Standalone has three ways in that share no check:
+ * `civi.standalone.login` (submit and password-reset mail, refused via
+ * `stopReason`), `civi.standalone.checkPassword` (the hash comparison; core's
+ * -500 listener defers to a decided `$success`), and `civi.api.authorize`
+ * (`User.passwordReset` fires no LoginEvent). All consult `Escape` first.
  */
 final class PasswordLoginSubscriber extends AutoSubscriber {
 
@@ -57,9 +40,8 @@ final class PasswordLoginSubscriber extends AutoSubscriber {
   }
 
   public static function onLogin(LoginEvent $event): void {
-    // Typed as LoginEvent, not GenericHookEvent: `stage`, `userID` and
-    // `stopReason` are real declared properties there, so the compiler checks
-    // the names instead of them resolving through __get to NULL.
+    // Typed as LoginEvent: `stage`, `userID` and `stopReason` are declared
+    // there, not resolved through __get to NULL.
     $stage = $event->stage;
     if ($stage !== 'pre_credentials_check' && $stage !== 'pre_send_password_reset') {
       return;
@@ -80,10 +62,7 @@ final class PasswordLoginSubscriber extends AutoSubscriber {
       return;
     }
 
-    // `success` is a by-reference hook field, not a declared property, so it
-    // is reached through GenericHookEvent's __set. Writing it is how core's
-    // own listener answers this event too.
-    // @phpstan-ignore property.notFound (dynamic hook field, set via __set)
+    // @phpstan-ignore property.notFound (by-reference hook field, set via __set)
     $event->success = FALSE;
   }
 
@@ -93,12 +72,8 @@ final class PasswordLoginSubscriber extends AutoSubscriber {
       return;
     }
 
-    // No user id is available on this event, so the admin exemption cannot be
-    // applied per account. Blocking the API action outright would take the
-    // escape hatch away, so the exemption is honoured site-wide instead: with
-    // the protection on, `User.passwordReset` stays reachable and the
-    // pre_send_password_reset listener above refuses it for everyone who is
-    // not an administrator.
+    // No user id on this event: with the admin protection on, the action
+    // stays reachable and the pre_send_password_reset listener refuses per account.
     if (!self::modeActive() || Value::bool(\Civi::settings()->get('warden_protect_admin_password_login'), TRUE)) {
       return;
     }
@@ -134,8 +109,7 @@ final class PasswordLoginSubscriber extends AutoSubscriber {
       return ProviderRepository::requiredModeActive();
     }
     catch (\Throwable $e) {
-      // Failing OPEN is deliberate. If warden cannot read its own providers,
-      // the alternative is a site nobody can log into because a query failed.
+      // Failing OPEN: the alternative is a site nobody can log into.
       \Civi::log()->error('warden: could not evaluate login mode, allowing password login: {msg}', [
         'msg' => $e->getMessage(),
       ]);

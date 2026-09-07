@@ -8,12 +8,8 @@ namespace Civi\Warden;
  * TTL cache for discovery documents and key sets, on top of CiviCRM's own
  * cache service.
  *
- * The asymmetry is the point: a SUCCESSFUL fetch is cached for the configured
- * lifetime, a FAILED one for 60 seconds. Caching a failure for the full
- * lifetime would turn a thirty-second provider outage into fifteen minutes of
- * refused logins, and caching it forever — the mistake this class exists to
- * make impossible — would mean a provider that came back never worked again
- * until someone cleared a cache they did not know about.
+ * A SUCCESSFUL fetch is cached for the configured lifetime, a FAILED one for
+ * 60 seconds, so a short provider outage does not become a long one.
  */
 final class Cache {
 

@@ -8,10 +8,8 @@ namespace Civi\Warden;
  * Where in-flight authorization requests are kept between the redirect out and
  * the callback back.
  *
- * Split out from StateStore so the store's rules — expiry, single use, session
- * binding — are testable without a session, and so a future deployment that
- * needs a shared backend (several app containers behind a load balancer with
- * no sticky sessions) can supply one without touching the rules.
+ * Split out from StateStore so its rules (expiry, single use, session
+ * binding) are testable without a session and a shared backend can be swapped in.
  */
 interface StateStorage {
 

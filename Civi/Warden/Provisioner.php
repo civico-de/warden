@@ -6,26 +6,14 @@ namespace Civi\Warden;
 
 use Civi\Api4\WardenIdentity;
 
-// @mago-expect lint:cyclomatic-complexity
-// The three resolution outcomes and their refusals are one decision and read
-// best in one place.
+// @mago-expect lint:cyclomatic-complexity -- three resolution outcomes, one decision
 /**
  * Turning a verified ID token into a CiviCRM user id.
  *
- * Keyed on `sub` and nothing else. `sub` is the only claim OIDC promises is
- * immutable within an issuer and never reassigned to a different person; email
- * and `preferred_username` are neither, and a provider that lets a user pick
- * their own email claim turns email-keyed provisioning into an account
- * takeover primitive.
- *
- * The three outcomes, in order:
- *
- * 1. The subject is already linked. Log that user in. Nothing else is consulted.
- * 2. The subject is unknown and `link_policy` allows adoption. Only then may an
- *    existing account be claimed, and only on a VERIFIED email.
- * 3. The subject is unknown and `provision_policy` allows it. Create a user.
- *
- * Anything else is a refusal with an audit row.
+ * Keyed on `sub`, the only claim OIDC promises is immutable and never
+ * reassigned; email-keyed provisioning is an account takeover primitive.
+ * Outcomes in order: linked subject → log in; unknown + `link_policy` → adopt
+ * on a VERIFIED email; unknown + `provision_policy` → create. Else refuse.
  */
 final class Provisioner {
 
@@ -105,12 +93,8 @@ final class Provisioner {
   }
 
   /**
-   * Adopt an existing account for a previously unseen subject.
-   *
-   * Every guard here is load-bearing, and the refusal to relink is the whole
-   * point: if the account already belongs to a DIFFERENT subject at this
-   * provider, someone is either misconfigured or attacking, and quietly moving
-   * the link would hand them the account.
+   * Adopt an existing account for an unseen subject. Never relinks: an
+   * account bound to a DIFFERENT subject is misconfiguration or an attack.
    *
    * @return int|null
    *   NULL means "not adopted, carry on to provisioning".
@@ -118,10 +102,7 @@ final class Provisioner {
    * @throws \CRM_Core_Exception
    *   When the account is bound to another subject — a refusal, not a fallthrough.
    */
-  // @mago-expect lint:no-boolean-flag-parameter
-  // `email_verified` is a claim, not a mode switch: it travels with the email
-  // it qualifies, and separating them is how an unverified address gets used
-  // by accident.
+  // @mago-expect lint:no-boolean-flag-parameter -- `email_verified` qualifies the email beside it
   private static function adopt(Provider $provider, string $subject, string $email, bool $emailVerified): ?int {
     if (!$emailVerified) {
       Audit::record(
@@ -187,26 +168,20 @@ final class Provisioner {
   /**
    * @throws \CRM_Core_Exception
    */
-  // @mago-expect lint:no-boolean-flag-parameter
-  // As above: the flag qualifies the email beside it.
+  // @mago-expect lint:no-boolean-flag-parameter -- the flag qualifies the email beside it
   private static function create(Provider $provider, IdTokenClaims $claims, ?string $email, bool $emailVerified): int {
     $subject = $claims->subject;
     $mappedRoles = self::mappedRoles($provider, $claims, NULL);
 
-    // The username has to be stable and unique. `preferred_username` is
-    // neither — two people can hold the same one over time — so it is used
-    // only as a readable prefix, with the subject digest carrying uniqueness.
-    // An OIDC identity is (issuer, sub), so the digest covers both; the
-    // suffix keeps its full length, only the readable prefix is truncated.
+    // `preferred_username` is neither stable nor unique: a readable prefix
+    // only, the (issuer, sub) digest carries uniqueness.
     $preferred = Value::nullableStr($claims->claim('preferred_username'));
     $prefix = $preferred === NULL ? '' : preg_replace('/[^A-Za-z0-9._-]/', '', $preferred) ?? '';
     $suffix = '-' . substr(Audit::hashSubject($provider->issuerForComparison() . "\0" . $subject), 0, 12);
     $username = substr($prefix === '' ? $provider->name : $prefix, 0, 60 - strlen($suffix)) . $suffix;
 
-    // Contact, user and identity link stand or fall together: a lost
-    // unique-index race or a failed link must not leave a stranded account.
-    // Nested (savepoint) so the rollback is immediate even inside an outer
-    // transaction, instead of being deferred to its end.
+    // Contact, user and identity link stand or fall together. Nested
+    // (savepoint) so the rollback is immediate inside an outer transaction.
     $transaction = new \CRM_Core_Transaction(TRUE);
     try {
       $userId = Users::provision(
@@ -220,9 +195,8 @@ final class Provisioner {
       self::link($provider, $userId, $subject);
     }
     catch (\Throwable $e) {
-      // Anything audited inside the frame is gone with the rollback, so the
-      // frame is closed (rollback() only flags; commit() executes it) before
-      // the evidence of the refusal is written.
+      // Close the frame (rollback() only flags, commit() executes it) before
+      // the audit row, or it would roll back too.
       $transaction->rollback()->commit();
       Audit::record(
         Options::EVENT_LOGIN_FAILURE,
@@ -258,9 +232,7 @@ final class Provisioner {
         ->execute();
     }
     catch (\Throwable $e) {
-      // The unique index is the real enforcement — a race between two
-      // simultaneous first logins lands here, and losing that race must not
-      // create a second link.
+      // The unique index is the real enforcement against two simultaneous first logins.
       Audit::record(
         Options::EVENT_RELINK_REFUSED,
         $provider,
@@ -281,8 +253,6 @@ final class Provisioner {
 
   private static function touch(int $identityId): void {
     try {
-      // APIv4 would have to SELECT then UPDATE, and two simultaneous logins
-      // for the same identity would then lose one increment.
       // ckconform-ignore raw-sql -- atomic read-modify-write of a counter
       \CRM_Core_DAO::executeQuery(
         'UPDATE civicrm_warden_identity SET last_login_date = NOW(), login_count = login_count + 1 WHERE id = %1',
@@ -290,8 +260,7 @@ final class Provisioner {
       );
     }
     catch (\Throwable $e) {
-      // Error, not warning: this is a database write failing, and a silent
-      // catch would leave last_login_date quietly wrong forever.
+      // Error, not warning: a database write is failing.
       \Civi::log()->error('warden: could not update identity {id}: {msg}', [
         'id' => $identityId,
         'msg' => $e->getMessage(),
