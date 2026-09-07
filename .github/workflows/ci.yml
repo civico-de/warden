@@ -50,6 +50,8 @@ jobs:
     uses: jfilter/civikitchen/.github/workflows/playwright-e2e.yml@v1
     with:
       working_directory: .
+      # No lockfile of its own: docker-compose.entra.yml copies the Keycloak
+      # suite's package.json + package-lock.json into the Playwright container.
       cache_dependency_path: tests/e2e/keycloak/package-lock.json
       install_command: composer install --no-interaction --no-progress
       test_command: tests/e2e/entra/run.sh
