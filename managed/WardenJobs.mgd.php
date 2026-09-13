@@ -22,7 +22,8 @@ return [
         'run_frequency' => 'Daily',
         'api_entity' => 'Warden',
         'api_action' => 'prune',
-        'parameters' => '',
+        // The job runner defaults to APIv3 and runs without a logged-in user.
+        'parameters' => "version=4\ncheckPermissions=0",
         'is_active' => TRUE,
         'domain_id' => 'current_domain',
       ],
