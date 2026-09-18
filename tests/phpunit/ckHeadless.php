@@ -50,7 +50,7 @@ function ck_restore_core_foreign_keys(): void {
   \Civi\Test::asPreInstall(static function (): void {
     $sql = (new \Civi\Test\CiviEnvBuilder\CoreSchemaStep())->getSql();
     $database = \Civi\Test::dsn('database');
-    $content = is_array($sql) ? ($sql['content'] ?? NULL) : NULL;
+    $content = is_array($sql) ? $sql['content'] ?? NULL : NULL;
     if (!is_string($database) || !is_string($content)) {
       throw new RuntimeException('ck_headless: no database name or no core schema SQL');
     }
