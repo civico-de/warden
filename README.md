@@ -178,6 +178,6 @@ provider optional until a login against the real tenant succeeds.
 
 ## License and support
 
-Copyright civico GmbH. The repository is private and the extension is
-proprietary. Report operational or security issues through the repository's
-private issue tracker.
+Copyright civico GmbH, licensed under [AGPL-3.0](LICENSE.txt). Report bugs in
+the [issue tracker](https://github.com/civico-de/warden/issues); report
+security issues by email to hi@jfilter.de instead of opening a public issue.

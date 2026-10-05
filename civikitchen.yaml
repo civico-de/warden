@@ -1,10 +1,9 @@
 $schema: https://raw.githubusercontent.com/jfilter/civikitchen/main/packages/civikitchen-scenario-schema/scenario.schema.json
 version: 1
 policy:
-  # Expected values for ckconform (the checker lives in the public civikitchen
-  # image; these values are ours and stay in this private repo).
-  license: Proprietary
-  npm_license: UNLICENSED
+  # Expected values for ckconform.
+  license: AGPL-3.0
+  npm_license: AGPL-3.0
   copyright: 'civico GmbH'
 
   # heraldChecks is herald's own hook, not a core one.

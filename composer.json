@@ -2,7 +2,7 @@
     "name": "civico-de/warden",
     "description": "CiviCRM extension: OpenID Connect single sign-on for CiviCRM Standalone, with full ID-token validation, sub-keyed identity linking and its own audit trail.",
     "type": "civicrm-ext",
-    "license": "proprietary",
+    "license": "AGPL-3.0",
     "authors": [
         {
             "name": "Johannes Filter",

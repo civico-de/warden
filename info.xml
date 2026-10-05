@@ -3,7 +3,7 @@
   <file>warden</file>
   <name>warden</name>
   <description>OpenID Connect single sign-on for CiviCRM Standalone: discovery, PKCE, nonce and full ID-token signature validation, sub-keyed identity linking, provisioning and role mapping, with its own audit trail and rate limiting.</description>
-  <license>Proprietary</license>
+  <license>AGPL-3.0</license>
   <authors>
     <author>
       <name>Johannes Filter</name>
@@ -15,6 +15,7 @@
     <url desc="Main Extension Page">https://github.com/civico-de/warden</url>
     <url desc="Documentation">https://github.com/civico-de/warden</url>
     <url desc="Support">https://github.com/civico-de/warden/issues</url>
+    <url desc="Licensing">http://www.gnu.org/licenses/agpl-3.0.html</url>
   </urls>
   <releaseDate>2026-08-27</releaseDate>
   <version>0.3.3</version>
