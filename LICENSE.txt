@@ -1,5 +1,5 @@
 Package: warden
-Copyright (C) 2026 civico GmbH <hi@jfilter.de>
+Copyright (C) 2026 civico GmbH <johannes@civico.de>
 Licensed under the GNU Affero Public License 3.0 (below).
 
 -------------------------------------------------------------------------------
