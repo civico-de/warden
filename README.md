@@ -83,8 +83,7 @@ procedure.
 
 ## License and support
 
-Copyright civico GmbH, licensed under [AGPL-3.0](LICENSE.txt) from version
-0.4.0 on; earlier releases were proprietary. Report bugs in
+Copyright civico GmbH, licensed under [AGPL-3.0](LICENSE.txt). Report bugs in
 the [issue tracker](https://github.com/civico-de/warden/issues). Report
 security issues by email to security@civico.de, not in a public issue; see
 [SECURITY.md](SECURITY.md).
