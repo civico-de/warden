@@ -130,7 +130,7 @@ $provisioning = static fn (): array => [
     'required' => TRUE,
     'default' => 'never',
     'pseudoconstant' => ['callback' => 'Civi\Warden\Options::linkPolicies'],
-    'description' => 'never | verified_email. With `verified_email`, an unknown subject may adopt an existing user whose username matches the email claim, and ONLY when email_verified is true. Account takeover risk — see the threat model.',
+    'description' => 'never | verified_email. With `verified_email`, an unknown subject may adopt an existing user whose username matches the email claim, and ONLY when email_verified is true. Account takeover risk — see docs/configuration.md.',
   ],
   'default_role_names' => [
     'title' => 'Roles for provisioned users',
