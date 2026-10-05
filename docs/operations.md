@@ -17,6 +17,14 @@ Warden reports its findings on CiviCRM's System Status page. Among them:
 
 Entra-specific checks are listed in [Microsoft Entra ID](entra.md).
 
+### Monitoring hook
+
+Warden also implements `hook_civicrm_heraldChecks`, the registration hook of
+civico's herald monitoring extension, which is not publicly available. With
+herald installed, it reports one check for the configuration as a whole and
+one per provider, so an identity-provider outage is attributable to that
+provider. Without herald the hook is never called.
+
 ## Login trail
 
 CiviCRM Standalone keeps no record of logins, so Warden writes its own, visible
