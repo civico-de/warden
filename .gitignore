@@ -29,6 +29,8 @@ Thumbs.db
 # to, so a bare '.tsbuildinfo' pattern misses it)
 *.tsbuildinfo
 
-# Live Entra E2E: Tofu working files
+# Live Entra E2E: Tofu working files, local backend and environment
 tests/e2e/entra-live/tofu/.terraform/
 tests/e2e/entra-live/tofu/*.tfstate*
+tests/e2e/entra-live/tofu/*_override.tf
+tests/e2e/entra-live/.env

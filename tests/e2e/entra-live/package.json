@@ -1,0 +1,8 @@
+{
+  "name": "warden-entra-live-e2e",
+  "private": true,
+  "license": "AGPL-3.0",
+  "devDependencies": {
+    "@playwright/test": "1.60.0"
+  }
+}
