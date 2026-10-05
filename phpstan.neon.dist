@@ -2,9 +2,9 @@ includes:
 	# The CiviCRM call bans (APIv3 entry points, CRM_Utils_Array::value, …) as
 	# spaze/phpstan-disallowed-calls config — shipped in the civikitchen image,
 	# which is also the only place a phpstan binary exists.
-	- /opt/civikitchen-phpstan-config/civicrm-disallowed.neon
+	- /opt/civikitchen/toolbelt/phpstan-config/civicrm-disallowed.neon
 	# Opt in when the repo is ready; it is loud on older code:
-	# - /opt/civikitchen-phpstan/vendor/phpstan/phpstan-strict-rules/rules.neon
+	# - /opt/civikitchen/toolbelt/phpstan-root/vendor/phpstan/phpstan-strict-rules/rules.neon
 
 parameters:
 	level: 10
