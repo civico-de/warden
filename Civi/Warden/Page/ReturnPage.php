@@ -77,7 +77,7 @@ final class ReturnPage {
     try {
       $flow->establishSession(
         $result['provider'],
-        $result['userId'],
+        $result['user'],
         $result['claims'],
         $result['idToken'],
         $result['logoutHint'],

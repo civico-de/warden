@@ -11,6 +11,7 @@
     ],
     "require": {
         "ext-filter": "*",
+        "ext-mbstring": "*",
         "ext-session": "*",
         "php": ">=8.4",
         "digitalcz/openid-connect": "^1.4",

@@ -35,6 +35,7 @@ return [
             'provision_policy:label',
             'link_policy:label',
             'role_sync_mode:label',
+            'profile_sync_mode:label',
             'allowed_algorithms',
             'weight',
             'COUNT(identity.id) AS linked_count',

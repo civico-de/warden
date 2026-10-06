@@ -44,4 +44,29 @@ final class IdTokenClaims {
     ];
   }
 
+  /**
+   * The structured name claims as contact fields. `name` is a fallback for
+   * providers that send no `given_name`/`family_name`, and lands in
+   * first_name only — core builds display_name from the parts itself.
+   *
+   * @return array{first_name?: string, last_name?: string}
+   */
+  public function nameFields(): array {
+    $given = Value::nullableStr($this->claim('given_name'));
+    $family = Value::nullableStr($this->claim('family_name'));
+    if ($given === NULL && $family === NULL) {
+      $given = Value::nullableStr($this->claim('name'));
+    }
+
+    $fields = [];
+    if ($given !== NULL && $given !== '') {
+      $fields['first_name'] = mb_substr($given, 0, 64);
+    }
+    if ($family !== NULL && $family !== '') {
+      $fields['last_name'] = mb_substr($family, 0, 64);
+    }
+
+    return $fields;
+  }
+
 }

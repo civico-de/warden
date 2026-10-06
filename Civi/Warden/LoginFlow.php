@@ -4,6 +4,7 @@ declare(strict_types = 1);
 
 namespace Civi\Warden;
 
+use Civi\Warden\Event\PostLoginEvent;
 use DigitalCz\OpenIDConnect\Exception\InvalidTokenException as OidcInvalidTokenException;
 
 // @mago-expect lint:cyclomatic-complexity -- one protocol flow, its ordering kept visible
@@ -55,7 +56,7 @@ final class LoginFlow {
   /**
    * Handle the callback: validate, resolve the user, log them in.
    *
-   * @return array{userId: int, landing: string, provider: Provider, claims: IdTokenClaims, idToken: string, logoutHint: ?string}
+   * @return array{user: ResolvedUser, landing: string, provider: Provider, claims: IdTokenClaims, idToken: string, logoutHint: ?string}
    *
    * @throws \CRM_Core_Exception
    */
@@ -137,10 +138,10 @@ final class LoginFlow {
     $claims = new IdTokenClaims($subject, $allClaims);
 
     // 4. Resolve to a user. May provision, may refuse.
-    $userId = Provisioner::resolve($provider, $claims);
+    $user = Provisioner::resolve($provider, $claims);
 
     return [
-      'userId' => $userId,
+      'user' => $user,
       'landing' => $landing,
       'provider' => $provider,
       'claims' => $claims,
@@ -218,7 +219,7 @@ final class LoginFlow {
    */
   public function establishSession(
     Provider $provider,
-    int $userId,
+    ResolvedUser $user,
     IdTokenClaims $claims,
     #[\SensitiveParameter]
     string $idToken,
@@ -227,6 +228,7 @@ final class LoginFlow {
     if (!function_exists('authx_login')) {
       throw new \CRM_Core_Exception('warden needs the authx extension, which is not enabled.');
     }
+    $userId = $user->userId;
 
     // Rotate the session id here (session fixation), AFTER state consumption;
     // core's own regeneration on top is harmless.
@@ -277,6 +279,26 @@ final class LoginFlow {
       throw new \CRM_Core_Exception('Could not register the authenticated session.', 0, [], $e);
     }
     Audit::record(Options::EVENT_LOGIN_SUCCESS, $provider, $userId);
+    $this->announce($provider, $user, $claims);
+  }
+
+  /**
+   * Tell listeners about a finished login. The session exists and the trail
+   * has its row, so a failing listener is logged and cannot undo the login.
+   */
+  public function announce(Provider $provider, ResolvedUser $user, IdTokenClaims $claims): void {
+    try {
+      \Civi::dispatcher()->dispatch(
+        PostLoginEvent::NAME,
+        new PostLoginEvent($provider, $claims, $user->userId, $user->isNew),
+      );
+    }
+    catch (\Throwable $e) {
+      \Civi::log()->error('warden: a postLogin listener failed for user {id}: {msg}', [
+        'id' => $user->userId,
+        'msg' => $e->getMessage(),
+      ]);
+    }
   }
 
 }

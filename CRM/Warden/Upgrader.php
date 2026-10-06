@@ -45,4 +45,17 @@ final class CRM_Warden_Upgrader extends \CRM_Extension_Upgrader_Base {
     return TRUE;
   }
 
+  /**
+   * 0.5.0: per-provider profile sync. Idempotent for the same reason as above.
+   */
+  public function upgrade_0500(): bool {
+    if (!\CRM_Core_BAO_SchemaHandler::checkIfFieldExists('civicrm_warden_provider', 'profile_sync_mode')) {
+      \CRM_Core_DAO::executeQuery(
+        "ALTER TABLE civicrm_warden_provider ADD COLUMN profile_sync_mode varchar(16) NOT NULL DEFAULT 'off' AFTER role_sync_mode",
+      );
+    }
+
+    return TRUE;
+  }
+
 }

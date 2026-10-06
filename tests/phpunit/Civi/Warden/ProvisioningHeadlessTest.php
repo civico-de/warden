@@ -4,14 +4,17 @@ declare(strict_types = 1);
 
 namespace Civi\Warden;
 
+use Civi\Api4\Email;
 use Civi\Api4\Role;
 use Civi\Api4\User;
 use Civi\Api4\WardenAudit;
 use Civi\Api4\WardenIdentity;
 use Civi\Api4\WardenProvider;
+use Civi\Core\Event\PreEvent;
 use Civi\Test;
 use Civi\Test\HeadlessInterface;
 use Civi\Test\TransactionalInterface;
+use Civi\Warden\Event\ResolveUserEvent;
 use Civi\Warden\Tests\Support\JwtFixture;
 use PHPUnit\Framework\TestCase;
 
@@ -22,6 +25,9 @@ use PHPUnit\Framework\TestCase;
  *
  * @group headless
  * @covers \Civi\Warden\Provisioner
+ * @covers \Civi\Warden\Identities
+ * @covers \Civi\Warden\ProfileSync
+ * @covers \Civi\Warden\Event\ResolveUserEvent
  * @covers \Civi\Warden\Users
  * @covers \Civi\Warden\Audit
  * @covers \Civi\Warden\ProviderRepository
@@ -82,7 +88,7 @@ final class ProvisioningHeadlessTest extends TestCase implements HeadlessInterfa
   public function testFirstLoginProvisionsAUserAndLinksTheSubject(): void {
     $provider = $this->provider();
 
-    $userId = Provisioner::resolve($provider, $this->claims(['sub' => 'subject-A']));
+    $userId = Provisioner::resolve($provider, $this->claims(['sub' => 'subject-A']))->userId;
 
     self::assertGreaterThan(0, $userId);
 
@@ -122,8 +128,8 @@ final class ProvisioningHeadlessTest extends TestCase implements HeadlessInterfa
   public function testASecondLoginReusesTheSameUser(): void {
     $provider = $this->provider();
 
-    $first = Provisioner::resolve($provider, $this->claims(['sub' => 'subject-B']));
-    $second = Provisioner::resolve($provider, $this->claims(['sub' => 'subject-B']));
+    $first = Provisioner::resolve($provider, $this->claims(['sub' => 'subject-B']))->userId;
+    $second = Provisioner::resolve($provider, $this->claims(['sub' => 'subject-B']))->userId;
 
     self::assertSame($first, $second);
     self::assertCount(1, WardenIdentity::get(FALSE)->addWhere('subject', '=', 'subject-B')->execute());
@@ -131,7 +137,7 @@ final class ProvisioningHeadlessTest extends TestCase implements HeadlessInterfa
 
   public function testADeactivatedLinkedUserIsRefused(): void {
     $provider = $this->provider();
-    $userId = Provisioner::resolve($provider, $this->claims(['sub' => 'subject-inactive']));
+    $userId = Provisioner::resolve($provider, $this->claims(['sub' => 'subject-inactive']))->userId;
     User::update(FALSE)->addWhere('id', '=', $userId)->addValue('is_active', FALSE)->execute();
 
     $threw = NULL;
@@ -184,8 +190,8 @@ final class ProvisioningHeadlessTest extends TestCase implements HeadlessInterfa
     $b = $this->provider(['name' => 'other_idp', 'issuer' => 'https://other-idp.example.org']);
     $claims = ['sub' => 'shared-subject', 'preferred_username' => 'same.person'];
 
-    $userA = Provisioner::resolve($a, $this->claims($claims + ['email' => 'a@example.org']));
-    $userB = Provisioner::resolve($b, $this->claims($claims + ['email' => 'b@example.org']));
+    $userA = Provisioner::resolve($a, $this->claims($claims + ['email' => 'a@example.org']))->userId;
+    $userB = Provisioner::resolve($b, $this->claims($claims + ['email' => 'b@example.org']))->userId;
 
     self::assertNotSame($userA, $userB);
     $names = [];
@@ -208,7 +214,7 @@ final class ProvisioningHeadlessTest extends TestCase implements HeadlessInterfa
     $userId = Provisioner::resolve($provider, $this->claims([
       'sub' => 'long-subject',
       'preferred_username' => str_repeat('a', 80),
-    ]));
+    ]))->userId;
 
     $row = User::get(FALSE)->addSelect('username')->addWhere('id', '=', $userId)->execute()->single();
     self::assertIsArray($row);
@@ -284,7 +290,7 @@ final class ProvisioningHeadlessTest extends TestCase implements HeadlessInterfa
       'sub' => 'subject-F',
       'email' => 'adoptme@example.org',
       'email_verified' => TRUE,
-    ]));
+    ]))->userId;
 
     self::assertSame($existing, $userId);
     self::assertCount(1, WardenAudit::get(FALSE)->addWhere('reason', '=', 'adopted')->execute());
@@ -359,7 +365,7 @@ final class ProvisioningHeadlessTest extends TestCase implements HeadlessInterfa
    */
   public function testTheUniqueIndexRefusesASecondUserForOneSubject(): void {
     $provider = $this->provider();
-    $userId = Provisioner::resolve($provider, $this->claims(['sub' => 'subject-G']));
+    $userId = Provisioner::resolve($provider, $this->claims(['sub' => 'subject-G']))->userId;
     $other = $this->makeUser('other@example.org');
 
     self::assertNotSame($userId, $other);
@@ -382,10 +388,9 @@ final class ProvisioningHeadlessTest extends TestCase implements HeadlessInterfa
       ->addValue('subject', 'race-subject')
       ->execute();
 
-    $link = new \ReflectionMethod(Provisioner::class, 'link');
     $failure = NULL;
     try {
-      $link->invoke(NULL, $provider, $loser, 'race-subject');
+      Identities::link($provider, $loser, 'race-subject');
     }
     catch (\CRM_Core_Exception $e) {
       $failure = $e;
@@ -412,7 +417,7 @@ final class ProvisioningHeadlessTest extends TestCase implements HeadlessInterfa
       'role_sync_mode' => Options::ROLE_SYNC_PROVISION,
     ]);
 
-    $userId = Provisioner::resolve($provider, $this->claims(['sub' => 'subject-H']));
+    $userId = Provisioner::resolve($provider, $this->claims(['sub' => 'subject-H']))->userId;
 
     self::assertContains($roleName, Users::roleNames($userId));
   }
@@ -426,7 +431,7 @@ final class ProvisioningHeadlessTest extends TestCase implements HeadlessInterfa
       'role_sync_mode' => Options::ROLE_SYNC_EVERY_LOGIN,
     ]);
 
-    $userId = Provisioner::resolve($provider, $this->claims(['sub' => 'subject-I']));
+    $userId = Provisioner::resolve($provider, $this->claims(['sub' => 'subject-I']))->userId;
     self::assertContains($roleName, Users::roleNames($userId));
 
     // The claim no longer grants it.
@@ -474,7 +479,7 @@ final class ProvisioningHeadlessTest extends TestCase implements HeadlessInterfa
     $userId = Provisioner::resolve($provider, $this->claims([
       'sub' => 'entra-overage-existing-user',
       'groups' => ['group-object-id'],
-    ]));
+    ]))->userId;
     self::assertContains($roleName, Users::roleNames($userId));
 
     try {
@@ -500,12 +505,319 @@ final class ProvisioningHeadlessTest extends TestCase implements HeadlessInterfa
     $userId = Provisioner::resolve($provider, $this->claims([
       'sub' => 'subject-J',
       'realm_access' => ['roles' => ['administer CiviCRM']],
-    ]));
+    ]))->userId;
 
     self::assertFalse(
       Users::hasPermission($userId, 'administer CiviCRM'),
       'a claim naming a permission must never grant it',
     );
+  }
+
+  // --- Profile sync --------------------------------------------------------
+
+  public function testProfileSyncFollowsTheStructuredNameAndTheVerifiedEmail(): void {
+    $provider = $this->provider(['profile_sync_mode' => Options::PROFILE_SYNC_EVERY_LOGIN]);
+    $userId = Provisioner::resolve($provider, $this->claims([
+      'sub' => 'subject-P',
+      'given_name' => 'Old',
+      'family_name' => 'Name',
+      'email' => 'old@example.org',
+      'email_verified' => TRUE,
+    ]))->userId;
+    self::assertSame(['Old', 'Name'], $this->name($userId));
+
+    Provisioner::resolve($provider, $this->claims([
+      'sub' => 'subject-P',
+      'given_name' => 'New',
+      'family_name' => 'Name',
+      'email' => 'new@example.org',
+      'email_verified' => TRUE,
+    ]));
+
+    self::assertSame(['New', 'Name'], $this->name($userId));
+    self::assertSame('new@example.org', $this->primaryEmail($userId));
+    // The old address is demoted, not deleted. uf_name follows through core's
+    // own syncCMSEmail (default on), not through anything warden writes.
+    self::assertCount(2, Email::get(FALSE)->addWhere('contact_id', '=', $this->contactId($userId))->execute());
+    self::assertSame('new@example.org', Users::find($userId)['uf_name'] ?? NULL);
+  }
+
+  public function testProfileSyncKeepsAnAdoptedContactsLastName(): void {
+    $provider = $this->provider([
+      'profile_sync_mode' => Options::PROFILE_SYNC_EVERY_LOGIN,
+      'link_policy' => Options::LINK_VERIFIED_EMAIL,
+    ]);
+    // makeUser() creates "Existing User" with no Email row, only uf_name.
+    $userId = $this->makeUser('adopted@example.org');
+    $claims = $this->claims([
+      'sub' => 'subject-S',
+      'name' => 'Jane Doe',
+      'email' => 'adopted@example.org',
+      'email_verified' => TRUE,
+    ]);
+
+    // Adoption syncs immediately; a bare `name` claim never overwrites last_name.
+    Provisioner::resolve($provider, $claims);
+
+    self::assertSame(['Jane Doe', 'User'], $this->name($userId));
+    self::assertSame('adopted@example.org', $this->primaryEmail($userId));
+    $display = \Civi\Api4\Contact::get(FALSE)
+      ->addSelect('display_name')
+      ->addWhere('id', '=', $this->contactId($userId))
+      ->execute()
+      ->single();
+    self::assertSame('Jane Doe User', $display['display_name']);
+  }
+
+  public function testProfileSyncNeverWritesAnUnverifiedEmail(): void {
+    $provider = $this->provider(['profile_sync_mode' => Options::PROFILE_SYNC_EVERY_LOGIN]);
+    $userId = Provisioner::resolve($provider, $this->claims([
+      'sub' => 'subject-Q',
+      'email' => 'kept@example.org',
+      'email_verified' => TRUE,
+    ]))->userId;
+
+    Provisioner::resolve($provider, $this->claims([
+      'sub' => 'subject-Q',
+      'email' => 'attacker@example.org',
+      'email_verified' => FALSE,
+    ]));
+
+    self::assertSame('kept@example.org', $this->primaryEmail($userId));
+    self::assertCount(1, Email::get(FALSE)->addWhere('contact_id', '=', $this->contactId($userId))->execute());
+  }
+
+  public function testProfileSyncOffLeavesTheContactAlone(): void {
+    $provider = $this->provider();
+    $userId = Provisioner::resolve($provider, $this->claims(['sub' => 'subject-R', 'given_name' => 'Old']))->userId;
+
+    Provisioner::resolve($provider, $this->claims(['sub' => 'subject-R', 'given_name' => 'New']));
+
+    self::assertSame(['Old', NULL], $this->name($userId));
+  }
+
+  public function testProfileSyncPromotesAnExistingSecondaryAddressAndWritesNothingWhenEqual(): void {
+    $provider = $this->provider(['profile_sync_mode' => Options::PROFILE_SYNC_EVERY_LOGIN]);
+    $claims = $this->claims([
+      'sub' => 'subject-U',
+      'given_name' => 'Same',
+      'email' => 'primary@example.org',
+      'email_verified' => TRUE,
+    ]);
+    $userId = Provisioner::resolve($provider, $claims)->userId;
+    $contactId = $this->contactId($userId);
+    Email::create(FALSE)
+      ->addValue('contact_id', $contactId)
+      ->addValue('email', 'second@example.org')
+      ->addValue('location_type_id:name', 'Home')
+      ->execute();
+    $before = \Civi\Api4\Contact::get(FALSE)
+      ->addSelect('modified_date')
+      ->addWhere('id', '=', $contactId)
+      ->execute()
+      ->single()['modified_date'];
+
+    $writes = 0;
+    $listener = static function (PreEvent $e) use (&$writes): void {
+      if (in_array($e->entity, ['Individual', 'Email'], TRUE) && $e->action === 'edit') {
+        $writes++;
+      }
+    };
+    \Civi::dispatcher()->addListener('hook_civicrm_pre', $listener);
+    try {
+      Provisioner::resolve($provider, $claims);
+      self::assertSame(0, $writes, 'equal values are not rewritten');
+
+      Provisioner::resolve($provider, $this->claims([
+        'sub' => 'subject-U',
+        'given_name' => 'Same',
+        'email' => 'second@example.org',
+        'email_verified' => TRUE,
+      ]));
+    }
+    finally {
+      \Civi::dispatcher()->removeListener('hook_civicrm_pre', $listener);
+    }
+
+    self::assertSame('second@example.org', $this->primaryEmail($userId));
+    self::assertCount(
+      2,
+      Email::get(FALSE)->addWhere('contact_id', '=', $contactId)->execute(),
+      'promoted, not duplicated',
+    );
+    $after = \Civi\Api4\Contact::get(FALSE)
+      ->addSelect('modified_date')
+      ->addWhere('id', '=', $contactId)
+      ->execute()
+      ->single()['modified_date'];
+    self::assertSame($before, $after, 'an unchanged name does not touch the contact');
+  }
+
+  public function testAFailedProfileSyncRefusesTheLoginAndIsAudited(): void {
+    $provider = $this->provider(['profile_sync_mode' => Options::PROFILE_SYNC_EVERY_LOGIN]);
+    $userId = Provisioner::resolve($provider, $this->claims(['sub' => 'subject-T', 'given_name' => 'Old']))->userId;
+    $listener = static function (PreEvent $e): void {
+      if ($e->entity === 'Individual' && $e->action === 'edit') {
+        throw new \RuntimeException('contact write refused by a hook');
+      }
+    };
+    \Civi::dispatcher()->addListener('hook_civicrm_pre', $listener);
+
+    $failure = NULL;
+    try {
+      Provisioner::resolve($provider, $this->claims(['sub' => 'subject-T', 'given_name' => 'New']));
+    }
+    catch (\CRM_Core_Exception $e) {
+      $failure = $e;
+    }
+    finally {
+      \Civi::dispatcher()->removeListener('hook_civicrm_pre', $listener);
+    }
+
+    self::assertNotNull($failure);
+    self::assertStringContainsString('profile could not be updated', $failure->getMessage());
+    self::assertSame(['Old', NULL], $this->name($userId));
+    $row = WardenAudit::get(FALSE)->addWhere('reason', '=', 'profile_sync_failed')->execute()->single();
+    self::assertSame($userId, $row['user_id']);
+    self::assertStringContainsString('contact write refused', Value::str($row['detail'] ?? NULL));
+
+    // An unknown user is nothing to sync, not an error.
+    ProfileSync::apply(999_999_999, ['first_name' => 'Nobody'], 'nobody@example.org');
+    self::assertCount(0, Email::get(FALSE)->addWhere('email', '=', 'nobody@example.org')->execute());
+  }
+
+  // --- Listener events -----------------------------------------------------
+
+  public function testAResolveUserListenerMayLinkAnExistingAccount(): void {
+    $provider = $this->provider(['provision_policy' => Options::PROVISION_NEVER]);
+    $existing = $this->makeUser('matched-elsewhere@example.org');
+    $seen = [];
+    $listener = static function (ResolveUserEvent $e) use ($existing, &$seen): void {
+      $seen[] = $e->claims->claim('employee_id');
+      $e->userId = $existing;
+    };
+    \Civi::dispatcher()->addListener(ResolveUserEvent::NAME, $listener);
+
+    try {
+      $resolved = Provisioner::resolve($provider, $this->claims(['sub' => 'subject-L', 'employee_id' => 'E-42']));
+      // Linked now: the listener is not consulted again.
+      Provisioner::resolve($provider, $this->claims(['sub' => 'subject-L', 'employee_id' => 'E-42']));
+    }
+    finally {
+      \Civi::dispatcher()->removeListener(ResolveUserEvent::NAME, $listener);
+    }
+
+    self::assertSame($existing, $resolved->userId);
+    self::assertFalse($resolved->isNew);
+    self::assertSame(['E-42'], $seen);
+    self::assertCount(1, WardenIdentity::get(FALSE)->addWhere('user_id', '=', $existing)->execute());
+    self::assertCount(1, WardenAudit::get(FALSE)->addWhere('reason', '=', 'adopted')->execute());
+  }
+
+  public function testAResolveUserListenerRunsBeforeEmailLinkingAndARefusalWins(): void {
+    $provider = $this->provider([
+      'link_policy' => Options::LINK_VERIFIED_EMAIL,
+      'provision_policy' => Options::PROVISION_NEVER,
+    ]);
+    $byEmail = $this->makeUser('by-email@example.org');
+    $listener = static function (ResolveUserEvent $e) use ($byEmail): void {
+      $e->userId = $byEmail;
+      $e->refusal = 'not on the staff list';
+    };
+    \Civi::dispatcher()->addListener(ResolveUserEvent::NAME, $listener);
+
+    $failure = NULL;
+    try {
+      Provisioner::resolve($provider, $this->claims([
+        'sub' => 'subject-M',
+        'email' => 'by-email@example.org',
+        'email_verified' => TRUE,
+      ]));
+    }
+    catch (\CRM_Core_Exception $e) {
+      $failure = $e;
+    }
+    finally {
+      \Civi::dispatcher()->removeListener(ResolveUserEvent::NAME, $listener);
+    }
+
+    self::assertNotNull($failure);
+    self::assertStringContainsString('refused the sign-in', $failure->getMessage());
+    self::assertCount(
+      0,
+      WardenIdentity::get(FALSE)->addWhere('user_id', '=', $byEmail)->execute(),
+      'neither the listener id nor the email adoption linked',
+    );
+    $denied = WardenAudit::get(FALSE)->addWhere('reason', '=', 'refused_by_listener')->execute()->single();
+    self::assertSame('not on the staff list', $denied['detail']);
+  }
+
+  public function testAListenerNamedUserStillPassesTheAccountChecks(): void {
+    $provider = $this->provider(['provision_policy' => Options::PROVISION_NEVER]);
+    $inactive = $this->makeUser('inactive-listener@example.org');
+    User::update(FALSE)->addWhere('id', '=', $inactive)->addValue('is_active', FALSE)->execute();
+    $bound = $this->makeUser('bound@example.org');
+    $target = NULL;
+    $listener = static function (ResolveUserEvent $e) use (&$target): void {
+      $e->userId = $target;
+    };
+    \Civi::dispatcher()->addListener(ResolveUserEvent::NAME, $listener);
+
+    try {
+      foreach ([
+        [$inactive, 'subject-N1', '/account on this site is disabled/', 'user_inactive'],
+        [999_999_999, 'subject-N2', '/no longer exists/', 'user_missing'],
+        [$bound, 'subject-N3', NULL, NULL],
+        [$bound, 'subject-N4', '/already linked to a different identity/', 'already_linked'],
+      ] as [$userId, $subject, $pattern, $reason]) {
+        $target = $userId;
+        $failure = NULL;
+        try {
+          Provisioner::resolve($provider, $this->claims(['sub' => $subject]));
+        }
+        catch (\CRM_Core_Exception $e) {
+          $failure = $e;
+        }
+        if ($pattern === NULL) {
+          self::assertNull($failure, $subject);
+          continue;
+        }
+        self::assertNotNull($failure, $subject);
+        self::assertMatchesRegularExpression($pattern, $failure->getMessage());
+        self::assertCount(1, WardenAudit::get(FALSE)->addWhere('reason', '=', $reason)->execute(), Value::str($reason));
+      }
+    }
+    finally {
+      \Civi::dispatcher()->removeListener(ResolveUserEvent::NAME, $listener);
+    }
+
+    self::assertCount(0, WardenIdentity::get(FALSE)->addWhere('user_id', '=', $inactive)->execute());
+    self::assertCount(1, WardenIdentity::get(FALSE)->addWhere('user_id', '=', $bound)->execute());
+  }
+
+  public function testAThrowingResolveUserListenerIsAuditedAndHiddenFromTheVisitor(): void {
+    $provider = $this->provider();
+    $listener = static function (): void {
+      throw new \RuntimeException('secret internal detail');
+    };
+    \Civi::dispatcher()->addListener(ResolveUserEvent::NAME, $listener);
+
+    $failure = NULL;
+    try {
+      Provisioner::resolve($provider, $this->claims(['sub' => 'subject-X']));
+    }
+    catch (\CRM_Core_Exception $e) {
+      $failure = $e;
+    }
+    finally {
+      \Civi::dispatcher()->removeListener(ResolveUserEvent::NAME, $listener);
+    }
+
+    self::assertNotNull($failure);
+    self::assertStringNotContainsString('secret internal detail', $failure->getMessage());
+    self::assertCount(0, WardenIdentity::get(FALSE)->addWhere('subject', '=', 'subject-X')->execute());
+    $row = WardenAudit::get(FALSE)->addWhere('reason', '=', 'listener_failed')->execute()->single();
+    self::assertStringContainsString('secret internal detail', Value::str($row['detail'] ?? NULL));
   }
 
   public function testTheUserFacadeHandlesLookupAndRoleConfigurationEdges(): void {
@@ -532,6 +844,35 @@ final class ProvisioningHeadlessTest extends TestCase implements HeadlessInterfa
 
     Users::setRoles($userId, ['facade_active', 'facade_inactive', 'facade_missing']);
     self::assertSame(['facade_active'], Users::roleNames($userId));
+  }
+
+  private function contactId(int $userId): int {
+    return Value::int(Users::find($userId)['contact_id'] ?? NULL);
+  }
+
+  /**
+   * @return array{0: ?string, 1: ?string}
+   */
+  private function name(int $userId): array {
+    $contact = \Civi\Api4\Contact::get(FALSE)
+      ->addSelect('first_name', 'last_name')
+      ->addWhere('id', '=', $this->contactId($userId))
+      ->execute()
+      ->single();
+
+    return [Value::nullableStr($contact['first_name'] ?? NULL), Value::nullableStr($contact['last_name'] ?? NULL)];
+  }
+
+  private function primaryEmail(int $userId): ?string {
+    $contactId = Users::find($userId)['contact_id'] ?? NULL;
+    $email = \Civi\Api4\Email::get(FALSE)
+      ->addSelect('email')
+      ->addWhere('contact_id', '=', $contactId)
+      ->addWhere('is_primary', '=', TRUE)
+      ->execute()
+      ->first();
+
+    return Value::nullableStr($email['email'] ?? NULL);
   }
 
   private function makeRole(string $name, string $label): void {

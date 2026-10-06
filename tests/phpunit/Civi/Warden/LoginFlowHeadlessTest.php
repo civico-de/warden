@@ -10,6 +10,7 @@ use Civi\Api4\WardenProvider;
 use Civi\Test;
 use Civi\Test\HeadlessInterface;
 use Civi\Test\TransactionalInterface;
+use Civi\Warden\Event\PostLoginEvent;
 use Civi\Warden\Tests\Support\ArrayStateStorage;
 use Civi\Warden\Tests\Support\JwtFixture;
 use DigitalCz\OpenIDConnect\Util\Pkce;
@@ -246,7 +247,7 @@ final class LoginFlowHeadlessTest extends TestCase implements HeadlessInterface,
 
     $result = $this->flow()->complete($state, 'an-authorization-code');
 
-    self::assertGreaterThan(0, $result['userId']);
+    self::assertGreaterThan(0, $result['user']->userId);
     self::assertSame('/civicrm/dashboard', $result['landing']);
     self::assertSame($provider->id, $result['provider']->id);
 
@@ -258,7 +259,12 @@ final class LoginFlowHeadlessTest extends TestCase implements HeadlessInterface,
 
   public function testSessionStartFailureIsAuditedAndSafelyWrapped(): void {
     $provider = $this->provider();
-    $userId = Users::provision('session-user', 'session-user@example.org', 'Session User', []);
+    $userId = Users::provision(
+      'session-user',
+      'session-user@example.org',
+      ['first_name' => 'Session', 'last_name' => 'User'],
+      [],
+    );
     $claims = new IdTokenClaims('session-subject', [
       'sub' => 'session-subject',
       'sid' => 'provider-session-id',
@@ -267,7 +273,13 @@ final class LoginFlowHeadlessTest extends TestCase implements HeadlessInterface,
 
     $failure = NULL;
     try {
-      $this->flow()->establishSession($provider, $userId, $claims, 'signed-id-token', 'session-user@example.org');
+      $this->flow()->establishSession(
+        $provider,
+        new ResolvedUser($userId, FALSE),
+        $claims,
+        'signed-id-token',
+        'session-user@example.org',
+      );
     }
     catch (\CRM_Core_Exception $e) {
       $failure = $e;
@@ -283,6 +295,26 @@ final class LoginFlowHeadlessTest extends TestCase implements HeadlessInterface,
         ->addWhere('user_id', '=', $userId)
         ->execute(),
     );
+  }
+
+  public function testAFinishedLoginIsAnnouncedAndAFailingListenerCannotUndoIt(): void {
+    $provider = $this->provider();
+    $claims = new IdTokenClaims('announce-subject', ['sub' => 'announce-subject']);
+    $seen = [];
+    $listener = static function (PostLoginEvent $e) use (&$seen): void {
+      $seen[] = [$e->provider->id, $e->userId, $e->isNewUser, $e->claims->subject];
+      throw new \RuntimeException('listener bug');
+    };
+    \Civi::dispatcher()->addListener(PostLoginEvent::NAME, $listener);
+
+    try {
+      $this->flow()->announce($provider, new ResolvedUser(42, TRUE), $claims);
+    }
+    finally {
+      \Civi::dispatcher()->removeListener(PostLoginEvent::NAME, $listener);
+    }
+
+    self::assertSame([[$provider->id, 42, TRUE, 'announce-subject']], $seen);
   }
 
   public function testAReplayedCallbackIsRefused(): void {
@@ -484,7 +516,7 @@ final class LoginFlowHeadlessTest extends TestCase implements HeadlessInterface,
     ]);
     $result = $this->flow()->complete($state, 'code');
 
-    self::assertGreaterThan(0, $result['userId']);
+    self::assertGreaterThan(0, $result['user']->userId);
   }
 
   public function testATokenResponseWithoutAnIdTokenIsRefused(): void {

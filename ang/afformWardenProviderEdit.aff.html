@@ -22,6 +22,7 @@
     <af-field name="link_policy" defn="{help_post: 'verified_email lets an unknown subject adopt an existing account. Only enable it if you trust the provider not to let users choose their own email claim.'}" />
     <af-field name="default_role_names" />
     <af-field name="role_sync_mode" />
+    <af-field name="profile_sync_mode" defn="{help_post: 'every_login keeps the contact name and primary email in line with the provider at each sign-in; the email only while the provider asserts email_verified. Whether the login address follows is the CiviCRM setting syncCMSEmail.'}" />
     <af-field name="claim_role_map" defn="{help_post: 'JSON, e.g. Entra App Roles: {\"claim\": \"roles\", \"map\": {\"CiviCRM.Admin\": [\"admin\"]}}; Keycloak: {\"claim\": \"realm_access.roles\", \"map\": {\"crm-admin\": [\"admin\"]}}. Values on the right are CiviCRM role names, never permission strings.'}" />
     <af-field name="weight" />
     <af-field name="is_active" />

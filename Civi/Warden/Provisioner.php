@@ -4,7 +4,7 @@ declare(strict_types = 1);
 
 namespace Civi\Warden;
 
-use Civi\Api4\WardenIdentity;
+use Civi\Warden\Event\ResolveUserEvent;
 
 // @mago-expect lint:cyclomatic-complexity -- three resolution outcomes, one decision
 /**
@@ -12,8 +12,9 @@ use Civi\Api4\WardenIdentity;
  *
  * Keyed on `sub`, the only claim OIDC promises is immutable and never
  * reassigned; email-keyed provisioning is an account takeover primitive.
- * Outcomes in order: linked subject → log in; unknown + `link_policy` → adopt
- * on a VERIFIED email; unknown + `provision_policy` → create. Else refuse.
+ * Outcomes in order: linked subject → log in; unknown + a resolveUser
+ * listener naming a user → adopt; unknown + `link_policy` → adopt on a
+ * VERIFIED email; unknown + `provision_policy` → create. Else refuse.
  */
 final class Provisioner {
 
@@ -21,41 +22,39 @@ final class Provisioner {
    * @throws \CRM_Core_Exception
    *   With a message safe to show a visitor.
    */
-  public static function resolve(Provider $provider, IdTokenClaims $claims): int {
+  public static function resolve(Provider $provider, IdTokenClaims $claims): ResolvedUser {
     $subject = $claims->subject;
 
-    $existing = self::linkFor($provider, $subject);
+    $existing = Identities::find($provider, $subject);
     if ($existing !== NULL) {
       $userId = Value::int($existing['user_id'] ?? NULL);
-      // Standalone's authx does not check is_active itself, so a deactivated
-      // account would keep signing in through the IdP.
-      $user = Users::find($userId);
-      if ($user === NULL || !Value::bool($user['is_active'] ?? NULL)) {
-        Audit::record(
-          Options::EVENT_LOGIN_DENIED,
-          $provider,
-          $userId,
-          'user_inactive',
-          'account is disabled',
-          $subject,
-        );
-
-        throw new \CRM_Core_Exception('Your account on this site is disabled. Ask an administrator to reactivate it.');
-      }
-      self::touch(Value::int($existing['id'] ?? NULL));
+      self::assertActive($provider, $userId, $subject);
+      Identities::touch(Value::int($existing['id'] ?? NULL));
       self::syncRolesOnLogin($provider, $userId, $claims);
+      ProfileSync::onLogin($provider, $userId, $claims);
 
-      return $userId;
+      return new ResolvedUser($userId, FALSE);
     }
 
     [$email, $emailVerified] = $claims->email();
 
+    $listenerUserId = self::askListeners($provider, $claims);
+    if ($listenerUserId !== NULL) {
+      self::assertActive($provider, $listenerUserId, $subject);
+      self::adopt($provider, $subject, $listenerUserId, 'linked to an existing account by a resolveUser listener');
+      self::syncRolesOnLogin($provider, $listenerUserId, $claims);
+      ProfileSync::onLogin($provider, $listenerUserId, $claims);
+
+      return new ResolvedUser($listenerUserId, FALSE);
+    }
+
     if ($provider->linkPolicy === Options::LINK_VERIFIED_EMAIL && $email !== NULL) {
-      $userId = self::adopt($provider, $subject, $email, $emailVerified);
+      $userId = self::adoptByEmail($provider, $subject, $email, $emailVerified);
       if ($userId !== NULL) {
         self::syncRolesOnLogin($provider, $userId, $claims);
+        ProfileSync::onLogin($provider, $userId, $claims);
 
-        return $userId;
+        return new ResolvedUser($userId, FALSE);
       }
     }
 
@@ -74,27 +73,62 @@ final class Provisioner {
       );
     }
 
-    return self::create($provider, $claims, $email, $emailVerified);
+    return new ResolvedUser(self::create($provider, $claims, $email, $emailVerified), TRUE);
   }
 
   /**
-   * The existing link for this subject, if any.
+   * Let other extensions match an unknown subject. A listener may name an
+   * existing user id to link, or set a refusal reason; a linked subject never
+   * reaches this point, so a listener cannot override an established link.
    *
-   * @return array<string, mixed>|null
+   * @throws \CRM_Core_Exception
    */
-  private static function linkFor(Provider $provider, string $subject): ?array {
-    /** @var array<string, mixed>|null */
-    return WardenIdentity::get(FALSE)
-      ->addSelect('id', 'user_id')
-      ->addWhere('provider_id', '=', $provider->id)
-      ->addWhere('subject', '=', $subject)
-      ->execute()
-      ->first();
+  private static function askListeners(Provider $provider, IdTokenClaims $claims): ?int {
+    $event = new ResolveUserEvent($provider, $claims);
+    try {
+      \Civi::dispatcher()->dispatch(ResolveUserEvent::NAME, $event);
+    }
+    catch (\Throwable $e) {
+      // A listener's exception is a bug in that listener; its message is not for the visitor.
+      \Civi::log()->error('warden: a resolveUser listener failed: {msg}', ['msg' => $e->getMessage()]);
+      Audit::record(
+        Options::EVENT_LOGIN_FAILURE,
+        $provider,
+        NULL,
+        'listener_failed',
+        substr($e->getMessage(), 0, 200),
+        $claims->subject,
+      );
+
+      throw new \CRM_Core_Exception(
+        'This sign-in could not be completed. Ask an administrator to check the warden log.',
+        0,
+        [],
+        $e,
+      );
+    }
+
+    $refusal = $event->refusal;
+    if ($refusal !== NULL && $refusal !== '') {
+      Audit::record(
+        Options::EVENT_LOGIN_DENIED,
+        $provider,
+        NULL,
+        'refused_by_listener',
+        substr($refusal, 0, 200),
+        $claims->subject,
+      );
+
+      throw new \CRM_Core_Exception(
+        'Your identity provider authenticated you, but this site refused the sign-in. Ask an administrator to check the warden log.',
+      );
+    }
+
+    return $event->userId !== NULL && $event->userId > 0 ? $event->userId : NULL;
   }
 
   /**
-   * Adopt an existing account for an unseen subject. Never relinks: an
-   * account bound to a DIFFERENT subject is misconfiguration or an attack.
+   * Adopt an existing account by verified email, for an unseen subject.
    *
    * @return int|null
    *   NULL means "not adopted, carry on to provisioning".
@@ -103,7 +137,7 @@ final class Provisioner {
    *   When the account is bound to another subject — a refusal, not a fallthrough.
    */
   // @mago-expect lint:no-boolean-flag-parameter -- `email_verified` qualifies the email beside it
-  private static function adopt(Provider $provider, string $subject, string $email, bool $emailVerified): ?int {
+  private static function adoptByEmail(Provider $provider, string $subject, string $email, bool $emailVerified): ?int {
     if (!$emailVerified) {
       Audit::record(
         Options::EVENT_LOGIN_DENIED,
@@ -129,15 +163,19 @@ final class Provisioner {
       return NULL;
     }
 
-    // Is this user already bound to a different subject at this provider?
-    $bound = WardenIdentity::get(FALSE)
-      ->addSelect('subject')
-      ->addWhere('provider_id', '=', $provider->id)
-      ->addWhere('user_id', '=', $userId)
-      ->execute()
-      ->first();
+    self::adopt($provider, $subject, $userId, 'linked to an existing account by verified email');
 
-    if (is_array($bound)) {
+    return $userId;
+  }
+
+  /**
+   * Link an unseen subject to an existing account. Never relinks: an account
+   * bound to a DIFFERENT subject is misconfiguration or an attack.
+   *
+   * @throws \CRM_Core_Exception
+   */
+  private static function adopt(Provider $provider, string $subject, int $userId, string $note): void {
+    if (Identities::isBound($provider, $userId)) {
       Audit::record(
         Options::EVENT_RELINK_REFUSED,
         $provider,
@@ -152,17 +190,38 @@ final class Provisioner {
       );
     }
 
-    self::link($provider, $userId, $subject);
-    Audit::record(
-      Options::EVENT_PROVISIONED,
-      $provider,
-      $userId,
-      'adopted',
-      'linked to an existing account by verified email',
-      $subject,
-    );
+    Identities::link($provider, $userId, $subject);
+    Audit::record(Options::EVENT_PROVISIONED, $provider, $userId, 'adopted', $note, $subject);
+  }
 
-    return $userId;
+  /**
+   * Refuse a deactivated account. Standalone's authx does not check
+   * is_active itself, so the IdP would otherwise keep signing it in.
+   *
+   * @throws \CRM_Core_Exception
+   */
+  private static function assertActive(Provider $provider, int $userId, string $subject): void {
+    $user = Users::find($userId);
+    if ($user === NULL) {
+      Audit::record(
+        Options::EVENT_LOGIN_DENIED,
+        $provider,
+        NULL,
+        'user_missing',
+        'the linked user id does not exist',
+        $subject,
+      );
+
+      throw new \CRM_Core_Exception(
+        'The account linked to your identity no longer exists. Ask an administrator to relink it.',
+      );
+    }
+    if (Value::bool($user['is_active'] ?? NULL)) {
+      return;
+    }
+    Audit::record(Options::EVENT_LOGIN_DENIED, $provider, $userId, 'user_inactive', 'account is disabled', $subject);
+
+    throw new \CRM_Core_Exception('Your account on this site is disabled. Ask an administrator to reactivate it.');
   }
 
   /**
@@ -189,10 +248,10 @@ final class Provisioner {
         // Only a verified address is written onto the contact. An unverified
         // one would let the IdP put an arbitrary address on a CiviCRM contact.
         $emailVerified ? $email : NULL,
-        Value::nullableStr($claims->claim('name')),
+        $claims->nameFields(),
         RoleMapper::apply($provider, $provider->defaultRoleNames, $mappedRoles),
       );
-      self::link($provider, $userId, $subject);
+      Identities::link($provider, $userId, $subject);
     }
     catch (\Throwable $e) {
       // Close the frame (rollback() only flags, commit() executes it) before
@@ -219,53 +278,6 @@ final class Provisioner {
     );
 
     return $userId;
-  }
-
-  private static function link(Provider $provider, int $userId, string $subject): void {
-    try {
-      WardenIdentity::create(FALSE)
-        ->addValue('provider_id', $provider->id)
-        ->addValue('user_id', $userId)
-        ->addValue('subject', $subject)
-        ->addValue('last_login_date', 'now')
-        ->addValue('login_count', 1)
-        ->execute();
-    }
-    catch (\Throwable $e) {
-      // The unique index is the real enforcement against two simultaneous first logins.
-      Audit::record(
-        Options::EVENT_RELINK_REFUSED,
-        $provider,
-        $userId,
-        'link_conflict',
-        'unique index refused the link',
-        $subject,
-      );
-
-      throw new \CRM_Core_Exception(
-        'This identity could not be linked to an account. Ask an administrator to check the warden log.',
-        0,
-        [],
-        $e,
-      );
-    }
-  }
-
-  private static function touch(int $identityId): void {
-    try {
-      // ckconform-ignore raw-sql -- atomic read-modify-write of a counter
-      \CRM_Core_DAO::executeQuery(
-        'UPDATE civicrm_warden_identity SET last_login_date = NOW(), login_count = login_count + 1 WHERE id = %1',
-        [1 => [$identityId, 'Integer']],
-      );
-    }
-    catch (\Throwable $e) {
-      // Error, not warning: a database write is failing.
-      \Civi::log()->error('warden: could not update identity {id}: {msg}', [
-        'id' => $identityId,
-        'msg' => $e->getMessage(),
-      ]);
-    }
   }
 
   private static function syncRolesOnLogin(Provider $provider, int $userId, IdTokenClaims $claims): void {

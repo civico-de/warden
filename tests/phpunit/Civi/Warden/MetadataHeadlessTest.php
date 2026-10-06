@@ -45,6 +45,10 @@ final class MetadataHeadlessTest extends TestCase implements HeadlessInterface {
       array_keys(Options::roleSyncModes()),
     );
     self::assertSame(
+      [Options::PROFILE_SYNC_OFF, Options::PROFILE_SYNC_EVERY_LOGIN],
+      array_keys(Options::profileSyncModes()),
+    );
+    self::assertSame(
       [
         Options::EVENT_LOGIN_SUCCESS,
         Options::EVENT_LOGIN_FAILURE,

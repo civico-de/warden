@@ -26,6 +26,9 @@ final class Options {
   public const ROLE_SYNC_PROVISION = 'provision_only';
   public const ROLE_SYNC_EVERY_LOGIN = 'every_login';
 
+  public const PROFILE_SYNC_OFF = 'off';
+  public const PROFILE_SYNC_EVERY_LOGIN = 'every_login';
+
   public const EVENT_LOGIN_SUCCESS = 'login_success';
   public const EVENT_LOGIN_FAILURE = 'login_failure';
   public const EVENT_LOGIN_DENIED = 'login_denied';
@@ -75,6 +78,16 @@ final class Options {
       self::ROLE_SYNC_OFF => E::ts('Off - roles are managed in CiviCRM'),
       self::ROLE_SYNC_PROVISION => E::ts('At provisioning only'),
       self::ROLE_SYNC_EVERY_LOGIN => E::ts('On every login - mapped roles are added AND removed'),
+    ];
+  }
+
+  /**
+   * @return array<string, string>
+   */
+  public static function profileSyncModes(): array {
+    return [
+      self::PROFILE_SYNC_OFF => E::ts('Off - the contact is written at provisioning only'),
+      self::PROFILE_SYNC_EVERY_LOGIN => E::ts('On every login - name and verified email follow the provider'),
     ];
   }
 

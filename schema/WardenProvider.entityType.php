@@ -114,6 +114,15 @@ $provisioning = static fn (): array => [
     'pseudoconstant' => ['callback' => 'Civi\Warden\Options::roleSyncModes'],
     'description' => 'off | provision_only | every_login. `every_login` also REMOVES mapped roles the claim no longer grants; roles outside the map are never touched.',
   ],
+  'profile_sync_mode' => [
+    'title' => 'Profile sync',
+    'sql_type' => 'varchar(16)',
+    'input_type' => 'Select',
+    'required' => TRUE,
+    'default' => 'off',
+    'pseudoconstant' => ['callback' => 'Civi\Warden\Options::profileSyncModes'],
+    'description' => 'off | every_login. `every_login` copies the `name` claim onto the contact on each login, and the `email` claim only while email_verified is true.',
+  ],
   'provision_policy' => [
     'title' => 'Provisioning',
     'sql_type' => 'varchar(16)',

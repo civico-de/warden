@@ -107,6 +107,7 @@ final class Users {
    * Create a CiviCRM user and its contact. The password is random and never
    * shown: a provisioned account is usable only through the provider.
    *
+   * @param array{first_name?: string, last_name?: string} $name
    * @param list<string> $roleNames
    *
    * @return int
@@ -114,8 +115,8 @@ final class Users {
    *
    * @throws \CRM_Core_Exception
    */
-  public static function provision(string $username, ?string $email, ?string $displayName, array $roleNames): int {
-    $contactId = self::createContact($displayName, $email);
+  public static function provision(string $username, ?string $email, array $name, array $roleNames): int {
+    $contactId = self::createContact($name, $email);
 
     $create = User::create(FALSE)
       ->addValue('contact_id', $contactId)
@@ -221,16 +222,12 @@ final class Users {
   }
 
   /**
+   * @param array{first_name?: string, last_name?: string} $name
+   *
    * @throws \CRM_Core_Exception
    */
-  private static function createContact(?string $displayName, ?string $email): int {
-    $values = ['contact_type' => 'Individual'];
-    if ($displayName !== NULL && $displayName !== '') {
-      $values['display_name'] = substr($displayName, 0, 128);
-      $values['first_name'] = substr($displayName, 0, 64);
-    }
-
-    $create = Contact::create(FALSE)->setValues($values);
+  private static function createContact(array $name, ?string $email): int {
+    $create = Contact::create(FALSE)->setValues($name + ['contact_type' => 'Individual']);
     if ($email !== NULL && $email !== '') {
       $create->addChain('email', \Civi\Api4\Email::create(FALSE)
         ->addValue('contact_id', '$id')

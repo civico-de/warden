@@ -127,6 +127,39 @@ final class UpgraderSchemaTest extends TestCase implements HeadlessInterface {
     self::assertStringContainsString(implode(',', $ids) . ' share issuer ' . $issuer, $failure->getMessage());
   }
 
+  public function testUpgradeAddsTheProfileSyncColumnAndExistingRowsReadOff(): void {
+    \CRM_Core_DAO::executeQuery('ALTER TABLE civicrm_warden_provider DROP COLUMN profile_sync_mode');
+    self::assertFalse(\CRM_Core_BAO_SchemaHandler::checkIfFieldExists('civicrm_warden_provider', 'profile_sync_mode'));
+    // A row written by the previous release, before the column existed.
+    $name = 'sync_' . bin2hex(random_bytes(5));
+    \CRM_Core_DAO::executeQuery(
+      "INSERT INTO civicrm_warden_provider (name, label, issuer, client_id, scopes, mode, allowed_algorithms, is_active, weight)
+       VALUES (%1, 'Pre-upgrade', %2, 'client', 'openid', 'optional', 'RS256', 1, 1)",
+      [1 => [$name, 'String'], 2 => ['https://sync-' . bin2hex(random_bytes(6)) . '.example.org', 'String']],
+    );
+
+    $reflection = new \ReflectionClass(\CRM_Warden_Upgrader::class);
+    /** @var \CRM_Warden_Upgrader $upgrader */
+    $upgrader = $reflection->newInstanceWithoutConstructor();
+    self::assertTrue($upgrader->upgrade_0500());
+    self::assertTrue($upgrader->upgrade_0500(), 'idempotent: a fresh install already has the column');
+
+    try {
+      $stored = WardenProvider::get(FALSE)
+        ->addSelect('id', 'profile_sync_mode')
+        ->addWhere('name', '=', $name)
+        ->execute()
+        ->single();
+      self::assertSame(Options::PROFILE_SYNC_OFF, $stored['profile_sync_mode']);
+      $provider = ProviderRepository::find(Value::int($stored['id'] ?? NULL));
+      self::assertNotNull($provider);
+      self::assertSame(Options::PROFILE_SYNC_OFF, $provider->profileSyncMode);
+    }
+    finally {
+      WardenProvider::delete(FALSE)->addWhere('name', '=', $name)->execute();
+    }
+  }
+
   private function issuerIndexExists(): bool {
     $dao = \CRM_Core_DAO::executeQuery("SHOW INDEX FROM civicrm_warden_provider WHERE Key_name = 'UI_issuer'");
     if (!method_exists($dao, 'fetch')) {

@@ -29,6 +29,7 @@ final class ProviderRepository {
     'allowed_algorithms',
     'claim_role_map',
     'role_sync_mode',
+    'profile_sync_mode',
     'provision_policy',
     'link_policy',
     'default_role_names',
