@@ -17,8 +17,8 @@
     <url desc="Support">https://github.com/civico-de/warden/issues</url>
     <url desc="Licensing">http://www.gnu.org/licenses/agpl-3.0.html</url>
   </urls>
-  <releaseDate>2026-10-06</releaseDate>
-  <version>0.4.0</version>
+  <releaseDate>2026-10-07</releaseDate>
+  <version>0.5.0</version>
   <develStage>alpha</develStage>
   <compatibility mode="semver">
     <!-- Warden deliberately targets the currently verified Standalone line
