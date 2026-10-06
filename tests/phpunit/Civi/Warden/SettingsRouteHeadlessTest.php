@@ -60,7 +60,6 @@ final class SettingsRouteHeadlessTest extends TestCase implements HeadlessInterf
 
   public function testTheSettingsRouteExists(): void {
     $count = \CRM_Core_DAO::singleValueQuery(
-      // ckconform-ignore raw-sql -- civicrm_menu has no APIv4 entity
       "SELECT COUNT(*) FROM civicrm_menu WHERE path = 'civicrm/admin/setting/warden'",
     );
 
@@ -74,7 +73,6 @@ final class SettingsRouteHeadlessTest extends TestCase implements HeadlessInterf
       'civicrm/warden/logout/backchannel',
     ] as $path) {
       $count = \CRM_Core_DAO::singleValueQuery(
-        // ckconform-ignore raw-sql -- civicrm_menu has no APIv4 entity
         'SELECT COUNT(*) FROM civicrm_menu WHERE path = %1 AND is_public = 1',
         [1 => [$path, 'String']],
       );

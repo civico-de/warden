@@ -202,7 +202,6 @@ final class StatusCheckHeadlessTest extends TestCase implements HeadlessInterfac
     // the check has to catch it before the flow ever runs.
     $provider = $this->provider();
     \CRM_Core_DAO::executeQuery(
-      // ckconform-ignore raw-sql -- deliberately writes a value the API rejects
       'UPDATE civicrm_warden_provider SET allowed_algorithms = %1 WHERE id = %2',
       [1 => ['', 'String'], 2 => [$provider->id, 'Integer']],
     );
@@ -367,7 +366,6 @@ final class StatusCheckHeadlessTest extends TestCase implements HeadlessInterfac
   public function testHeraldConfigCheckFailsForAnErrorLevelProviderProblem(): void {
     $provider = $this->provider();
     \CRM_Core_DAO::executeQuery(
-      // ckconform-ignore raw-sql -- deliberately creates invalid legacy configuration
       'UPDATE civicrm_warden_provider SET allowed_algorithms = %1, is_active = 0 WHERE id = %2',
       [1 => ['', 'String'], 2 => [$provider->id, 'Integer']],
     );
