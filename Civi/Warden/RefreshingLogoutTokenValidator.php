@@ -19,7 +19,7 @@ final class RefreshingLogoutTokenValidator implements LogoutTokenValidator {
     private readonly string $jwksUri,
   ) {}
 
-  public function validate(LogoutToken $token): void {
+  public function validate(#[\SensitiveParameter] LogoutToken $token): void {
     try {
       $this->inner->validate($token);
     }

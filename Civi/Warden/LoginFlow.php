@@ -220,6 +220,7 @@ final class LoginFlow {
     Provider $provider,
     int $userId,
     IdTokenClaims $claims,
+    #[\SensitiveParameter]
     string $idToken,
     ?string $logoutHint = NULL,
   ): void {

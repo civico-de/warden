@@ -24,6 +24,7 @@ final class RefreshableJwksLoader implements JwksLoader {
     JwksLoader $inner,
     private readonly OidcCache $cache,
     int $ttl,
+    #[\SensitiveParameter]
     private readonly string $cacheSecret,
   ) {
     $this->cached = new CachingJwksLoader($inner, $cache, $ttl, $cacheSecret);

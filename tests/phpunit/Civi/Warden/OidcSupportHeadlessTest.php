@@ -193,7 +193,7 @@ final class OidcSupportHeadlessTest extends TestCase implements HeadlessInterfac
 
       public int $calls = 0;
 
-      public function validate(IdToken $token, ?string $nonce = NULL): void {
+      public function validate(#[\SensitiveParameter] IdToken $token, ?string $nonce = NULL): void {
         if (++$this->calls === 1) {
           throw new InvalidTokenException('unknown verification key');
         }
@@ -229,7 +229,7 @@ final class OidcSupportHeadlessTest extends TestCase implements HeadlessInterfac
 
       public int $calls = 0;
 
-      public function validate(LogoutToken $token): void {
+      public function validate(#[\SensitiveParameter] LogoutToken $token): void {
         if (++$this->calls === 1) {
           throw new InvalidTokenException('unknown verification key');
         }
@@ -261,7 +261,7 @@ final class OidcSupportHeadlessTest extends TestCase implements HeadlessInterfac
         private readonly InvalidTokenException $failure,
       ) {}
 
-      public function validate(IdToken $token, ?string $nonce = NULL): void {
+      public function validate(#[\SensitiveParameter] IdToken $token, ?string $nonce = NULL): void {
         throw $this->failure;
       }
 
@@ -293,7 +293,7 @@ final class OidcSupportHeadlessTest extends TestCase implements HeadlessInterfac
         private readonly InvalidTokenException $failure,
       ) {}
 
-      public function validate(IdToken $token, ?string $nonce = NULL): void {
+      public function validate(#[\SensitiveParameter] IdToken $token, ?string $nonce = NULL): void {
         throw $this->failure;
       }
 
@@ -325,7 +325,7 @@ final class OidcSupportHeadlessTest extends TestCase implements HeadlessInterfac
         private readonly InvalidTokenException $failure,
       ) {}
 
-      public function validate(LogoutToken $token): void {
+      public function validate(#[\SensitiveParameter] LogoutToken $token): void {
         throw $this->failure;
       }
 
@@ -357,7 +357,7 @@ final class OidcSupportHeadlessTest extends TestCase implements HeadlessInterfac
         private readonly InvalidTokenException $failure,
       ) {}
 
-      public function validate(LogoutToken $token): void {
+      public function validate(#[\SensitiveParameter] LogoutToken $token): void {
         throw $this->failure;
       }
 

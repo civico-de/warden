@@ -19,7 +19,7 @@ final class RefreshingIdTokenValidator implements IdTokenValidator {
     private readonly string $jwksUri,
   ) {}
 
-  public function validate(IdToken $token, ?string $nonce = NULL): void {
+  public function validate(#[\SensitiveParameter] IdToken $token, ?string $nonce = NULL): void {
     try {
       $this->inner->validate($token, $nonce);
     }

@@ -35,7 +35,12 @@ final class SessionMark {
    * confirmation page and Entra an account picker instead of ending the
    * provider session and redirecting back; Entra needs logout_hint.
    */
-  public static function set(Provider $provider, string $idToken, ?string $logoutHint = NULL): void {
+  public static function set(
+    Provider $provider,
+    #[\SensitiveParameter]
+    string $idToken,
+    ?string $logoutHint = NULL,
+  ): void {
     $session = \CRM_Core_Session::singleton();
     $session->set(self::KEY, $provider->id, self::SCOPE);
     $session->set(self::KEY_ID_TOKEN, $idToken, self::SCOPE);

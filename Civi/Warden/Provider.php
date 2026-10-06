@@ -25,6 +25,7 @@ final class Provider {
     public readonly string $label,
     public readonly string $issuer,
     public readonly string $clientId,
+    #[\SensitiveParameter]
     public readonly string $clientSecret,
     public readonly string $scopes,
     public readonly string $mode,
