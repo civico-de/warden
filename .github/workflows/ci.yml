@@ -30,6 +30,7 @@ jobs:
       key: warden
       composer_install: true
       lifecycle: true
+      extra_phpunit_config: phpunit-unit.xml.dist
 
   keycloak-e2e:
     name: Keycloak browser E2E
