@@ -2,7 +2,6 @@
 
 declare(strict_types = 1);
 
-// phpcs:disable PSR1.Files.SideEffects
 require_once 'warden.civix.php';
 $wardenAutoload = __DIR__ . '/vendor/autoload.php';
 if (!is_file($wardenAutoload)) {
@@ -15,7 +14,6 @@ if ($wardenLoader instanceof \Composer\Autoload\ClassLoader) {
   $wardenLoader->unregister();
   $wardenLoader->register(FALSE);
 }
-// phpcs:enable
 
 use CRM_Warden_ExtensionUtil as E;
 
