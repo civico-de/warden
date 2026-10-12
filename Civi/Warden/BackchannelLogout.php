@@ -63,11 +63,15 @@ final class BackchannelLogout {
     $tokenId = $all['jti'] ?? NULL;
     if (
       $subject !== NULL
-      && (!is_string($subject)
-      || $subject === '')
+      && (
+        !is_string($subject)
+        || $subject === ''
+      )
       || $sessionId !== NULL
-      && (!is_string($sessionId)
-      || $sessionId === '')
+      && (
+        !is_string($sessionId)
+        || $sessionId === ''
+      )
       || !is_string($tokenId)
       || $tokenId === ''
     ) {
