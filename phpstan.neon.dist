@@ -20,21 +20,26 @@ parameters:
 	# Error waiting for the one path that reads it before writing it; APIv4
 	# action parameters are exempted by the package's properties extension.
 	checkUninitializedProperties: true
+	# The whole repository, so a directory added later is analysed without an
+	# edit here; phpstan has no optional entries in paths.
 	paths:
-		- Civi
-		- CRM
-		- managed
-		- warden.php
+		- .
 	excludePaths:
 		analyse:
-			# civix-generated stubs; the DAO base class is created at runtime
+			# civix-generated; BAO/ is not — civix only seeds it, the logic is the repo's
 			- CRM/*/DAO/*
-			- CRM/*/BAO/*
+			- warden.civix.php
+			- mixin (?)
+			# phpstan-tests.neon.dist analyses the suite in a second pass
+			- tests (?)
+		analyseAndScan:
+			- phpstanBootstrap.php
+			- vendor (?)
+			- node_modules (?)
+			- build (?)
+			- .civikitchen-siblings (?)
 	scanFiles:
 		- warden.civix.php
-		# The schema mixin loads this interface dynamically before returning its
-		# helper, so PHPStan cannot discover the return type through autoloading.
-		- /var/www/html/core/mixin/lib/civimix-schema@5/src/SchemaHelperInterface.php
 		# authx_login() is a plain function, so it needs scanFiles not
 		# scanDirectories.
 		- /var/www/html/core/ext/authx/authx.php
