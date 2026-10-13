@@ -25,7 +25,7 @@ permissions:
 
 jobs:
   ci:
-    uses: jfilter/civikitchen/.github/workflows/extension-ci.yml@v1
+    uses: civico-de/civikitchen/.github/workflows/extension-ci.yml@v1
     with:
       key: warden
       composer_install: true
@@ -34,7 +34,7 @@ jobs:
 
   keycloak-e2e:
     name: Keycloak browser E2E
-    uses: jfilter/civikitchen/.github/workflows/playwright-e2e.yml@v1
+    uses: civico-de/civikitchen/.github/workflows/playwright-e2e.yml@v1
     with:
       working_directory: .
       cache_dependency_path: tests/e2e/keycloak/package-lock.json
@@ -48,7 +48,7 @@ jobs:
 
   entra-e2e:
     name: Entra profile browser E2E
-    uses: jfilter/civikitchen/.github/workflows/playwright-e2e.yml@v1
+    uses: civico-de/civikitchen/.github/workflows/playwright-e2e.yml@v1
     with:
       working_directory: .
       # No lockfile of its own: docker-compose.entra.yml copies the Keycloak

@@ -55,7 +55,7 @@ services:
       retries: 30
 
   app:
-    image: ${CIVIKITCHEN_IMAGE:-ghcr.io/jfilter/civikitchen:v1}
+    image: ${CIVIKITCHEN_IMAGE:-ghcr.io/civico-de/civikitchen:v1}
     pull_policy: always
     depends_on:
       db:
