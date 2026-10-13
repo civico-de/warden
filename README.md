@@ -16,7 +16,7 @@ trail.
 
 - CiviCRM Standalone, at the release pinned in `info.xml` or newer. Warden
   does not work on Drupal, WordPress or other CMS integrations.
-- PHP 8.4.
+- PHP 8.4, the floor of the bundled `digitalcz/openid-connect` 1.x.
 - The core extensions `standaloneusers`, `authx`, SearchKit and FormBuilder.
 
 ## Installation
