@@ -6,6 +6,13 @@ repo_dir="$(cd "${script_dir}/../../.." && pwd)"
 compose_file="${repo_dir}/.docker/docker-compose.keycloak.yml"
 
 cleanup() {
+  local status=$?
+  # On failure, show why before the teardown removes the containers: app and db
+  # output only, never the stack's environment.
+  if [ "${status}" -ne 0 ]; then
+    docker compose -f "${compose_file}" ps -a || true
+    docker compose -f "${compose_file}" logs --no-color --timestamps --tail 300 app db || true
+  fi
   docker compose -f "${compose_file}" down --volumes --remove-orphans
 }
 trap cleanup EXIT
