@@ -79,7 +79,9 @@ services:
       - ./init.d:/civikitchen-init.d:ro
       - entra-certs:/e2e-certs:ro
     healthcheck:
-      test: ["CMD-SHELL", "cv ev 'if (!class_exists(\"Civi\\\\Api4\\\\WardenProvider\") || !CRM_Core_DAO::checkTableExists(\"civicrm_warden_session\")) { throw new RuntimeException(\"warden not ready\"); }' >/dev/null 2>&1 && curl --fail --silent --output /dev/null http://127.0.0.1/civicrm/login"]
+      # curl first: Apache starts only after provisioning, and a cv boot during
+      # cv core:install fires the first-run hook and aborts the install.
+      test: ["CMD-SHELL", "curl --fail --silent --output /dev/null http://127.0.0.1/civicrm/login && cv ev 'if (!class_exists(\"Civi\\\\Api4\\\\WardenProvider\") || !CRM_Core_DAO::checkTableExists(\"civicrm_warden_session\")) { throw new RuntimeException(\"warden not ready\"); }' >/dev/null 2>&1"]
       interval: 5s
       timeout: 10s
       retries: 50
