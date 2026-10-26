@@ -6,10 +6,6 @@ policy:
   npm_license: AGPL-3.0
   copyright: 'civico GmbH'
 
-  # heraldChecks is herald's own hook, not a core one.
-  known_hooks:
-    - heraldChecks
-
   # Ratchet up, never down to make a red build green.
   coverage:
     minimum: 90

@@ -7,6 +7,7 @@ Warden reports its findings on CiviCRM's System Status page. Among them:
 | Check | Severity |
 |---|---|
 | A provider's discovery document cannot be fetched | error; critical for a `required` provider |
+| A provider's signing key set cannot be fetched or holds no keys | error; critical for a `required` provider |
 | A client secret is stored unencrypted or cannot be decrypted | critical |
 | No `CIVICRM_CRED_KEYS` configured | warning; critical once a provider holds a secret |
 | The session cookie lacks the `Secure` flag, typically behind a TLS-terminating proxy | error |
@@ -17,13 +18,17 @@ Warden reports its findings on CiviCRM's System Status page. Among them:
 
 Entra-specific checks are listed in [Microsoft Entra ID](entra.md).
 
-### Monitoring hook
+### Message names
 
-Warden also implements `hook_civicrm_heraldChecks`, the registration hook of
-civico's herald monitoring extension, which is not publicly available. With
-herald installed, it reports one check for the configuration as a whole and
-one per provider, so an identity-provider outage is attributable to that
-provider. Without herald the hook is never called.
+Every finding is a core status message with a stable name, so a monitor that
+reads `System.check` can follow it and an operator can hide it on the status
+page. A finding about one provider carries the provider ID in its name, for
+example `warden_discovery_3` or `warden_jwks_3`.
+
+A check that fails to run reports an error under its own name with the
+reason, rather than staying silent. `warden_providers` means the provider list
+itself could not be read; `warden_provider_<id>` means one provider's checks
+failed.
 
 ## Login trail
 

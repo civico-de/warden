@@ -8,18 +8,20 @@ use Civi\Api4\WardenProvider;
 use Civi\Test;
 use Civi\Test\HeadlessInterface;
 use Civi\Test\TransactionalInterface;
+use Civi\Warden\Tests\Support\FailingApi;
 use Civi\Warden\Tests\Support\JwtFixture;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpClient\MockHttpClient;
 use Symfony\Component\HttpClient\Response\MockResponse;
 
-// @mago-expect lint:cyclomatic-complexity
-// One headless fixture covers the complete status-check contract.
 /**
- * The system checks, and the herald checks that reuse them.
+ * The system checks warden reports through hook_civicrm_check.
  *
  * @group headless
  * @covers \Civi\Warden\StatusCheck
+ * @covers \Civi\Warden\ProviderStatusCheck
+ * @covers \Civi\Warden\ProviderEndpointCheck
+ * @covers \Civi\Warden\CheckGuard
  * @covers \Civi\Warden\EntraStatusCheck
  * @covers \Civi\Warden\RedirectUri
  * @covers \Civi\Warden\Escape
@@ -31,7 +33,6 @@ use Symfony\Component\HttpClient\Response\MockResponse;
  * @covers \Civi\Warden\Secret
  * @covers ::warden_civicrm_permission
  * @covers ::warden_civicrm_check
- * @covers ::warden_civicrm_heraldChecks
  */
 final class StatusCheckHeadlessTest extends TestCase implements HeadlessInterface, TransactionalInterface {
 
@@ -274,9 +275,16 @@ final class StatusCheckHeadlessTest extends TestCase implements HeadlessInterfac
     );
   }
 
+  public function testASiteWithoutProvidersOnlyReportsItsBaseUrl(): void {
+    // The dev stack's http base URL is the one finding a fresh site has.
+    $expected = RedirectUri::looksResolvable() ? [] : ['warden_redirect_uri'];
+
+    self::assertSame($expected, $this->names());
+  }
+
   public function testAHealthyProviderProducesNoProviderMessages(): void {
     $provider = $this->provider();
-    $this->stubHttp([$this->discoveryResponse()]);
+    $this->stubHttp([$this->discoveryResponse(), $this->jwksResponse()]);
 
     foreach (StatusCheck::messages() as $message) {
       $name = $message->getName();
@@ -288,96 +296,86 @@ final class StatusCheckHeadlessTest extends TestCase implements HeadlessInterfac
     }
   }
 
-  public function testHeraldChecksReportProviderHealth(): void {
-    $provider = $this->provider();
-    $this->stubHttp([new MockResponse('down', ['http_code' => 500])]);
-
-    $checks = [];
-    warden_civicrm_heraldChecks($checks);
-
-    self::assertArrayHasKey('warden.provider.' . $provider->name, $checks);
-    $check = $checks['warden.provider.' . $provider->name];
-    self::assertIsCallable($check);
-    $result = $check();
-    self::assertIsArray($result);
-
-    self::assertSame('fail', $result['status']);
-    self::assertIsString($result['detail'] ?? NULL);
-    self::assertStringContainsString('unreachable', $result['detail']);
-  }
-
-  public function testHeraldMarksARequiredUnreachableProviderExplicitly(): void {
-    $provider = $this->provider(['mode' => Options::MODE_REQUIRED]);
-    $this->stubHttp([new MockResponse('down', ['http_code' => 500])]);
-    $checks = [];
-    warden_civicrm_heraldChecks($checks);
-
-    $check = $checks['warden.provider.' . $provider->name];
-    self::assertIsCallable($check);
-    $result = $check();
-    self::assertIsArray($result);
-    self::assertSame('fail', $result['status']);
-    self::assertStringContainsString('REQUIRED provider unreachable', Value::str($result['detail'] ?? NULL));
-  }
-
-  public function testHeraldReportsAHealthySigningKeySet(): void {
-    $provider = $this->provider();
-    $this->stubHttp([$this->discoveryResponse(), $this->jwksResponse()]);
-    $checks = [];
-    warden_civicrm_heraldChecks($checks);
-
-    $check = $checks['warden.provider.' . $provider->name];
-    self::assertIsCallable($check);
-    $result = $check();
-    self::assertSame(['status' => 'ok', 'detail' => '1 signing key(s)'], $result);
-  }
-
-  public function testHeraldReportsAnUnusableSigningKeySet(): void {
+  public function testAnEmptySigningKeySetIsAnError(): void {
     $provider = $this->provider();
     $this->stubHttp([
       $this->discoveryResponse(),
       new MockResponse((string) json_encode(['keys' => []])),
     ]);
-    $checks = [];
-    warden_civicrm_heraldChecks($checks);
 
-    $check = $checks['warden.provider.' . $provider->name];
-    self::assertIsCallable($check);
-    $result = $check();
-    self::assertIsArray($result);
-    self::assertSame('fail', $result['status']);
-    self::assertStringContainsString('key set unusable', Value::str($result['detail'] ?? NULL));
+    $message = $this->message('warden_jwks_' . $provider->id);
+
+    self::assertSame(\Psr\Log\LogLevel::ERROR, $message->getSeverity());
+    self::assertStringContainsString('no signing keys', $message->getMessage());
   }
 
-  public function testHeraldConfigCheckIsOkOnAHealthySite(): void {
-    $checks = [];
-    warden_civicrm_heraldChecks($checks);
+  public function testAnUnreachableKeySetOfARequiredProviderIsCritical(): void {
+    $provider = $this->provider(['mode' => Options::MODE_REQUIRED]);
+    $this->stubHttp([$this->discoveryResponse(), new MockResponse('down', ['http_code' => 500])]);
 
-    self::assertArrayHasKey('warden.config', $checks);
-    // No providers configured and a dev base URL: the redirect_uri warning is
-    // below the error threshold the herald check uses.
-    $check = $checks['warden.config'];
-    self::assertIsCallable($check);
-    $result = $check();
-    self::assertIsArray($result);
-    self::assertSame('ok', $result['status'] ?? NULL);
+    self::assertSame(\Psr\Log\LogLevel::CRITICAL, $this->message('warden_jwks_' . $provider->id)->getSeverity());
   }
 
-  public function testHeraldConfigCheckFailsForAnErrorLevelProviderProblem(): void {
+  public function testAnUnreachableProviderIsNotAlsoReportedForItsKeys(): void {
     $provider = $this->provider();
-    \CRM_Core_DAO::executeQuery(
-      'UPDATE civicrm_warden_provider SET allowed_algorithms = %1, is_active = 0 WHERE id = %2',
-      [1 => ['', 'String'], 2 => [$provider->id, 'Integer']],
-    );
-    $checks = [];
-    warden_civicrm_heraldChecks($checks);
+    $this->stubHttp([new MockResponse('down', ['http_code' => 500])]);
 
-    $check = $checks['warden.config'];
-    self::assertIsCallable($check);
-    $result = $check();
-    self::assertIsArray($result);
-    self::assertSame('fail', $result['status']);
-    self::assertStringContainsString('no signing algorithm', Value::str($result['detail'] ?? NULL));
+    $names = $this->names();
+
+    self::assertContains('warden_discovery_' . $provider->id, $names);
+    self::assertNotContains('warden_jwks_' . $provider->id, $names);
+  }
+
+  public function testACheckThatThrowsIsAnErrorUnderItsOwnName(): void {
+    $provider = $this->provider([
+      'claim_role_map' => (string) json_encode(['claim' => 'roles', 'map' => ['crm-admin' => ['admin']]]),
+    ]);
+    $this->stubHttp([$this->discoveryResponse(), $this->jwksResponse()]);
+
+    $message = $this->whileApiFails('Role', fn (): \CRM_Utils_Check_Message => $this->message('warden_unknown_roles_'
+    . $provider->id));
+
+    self::assertSame(\Psr\Log\LogLevel::ERROR, $message->getSeverity());
+    self::assertStringContainsString('Role is down', $message->getMessage());
+  }
+
+  public function testUnreadableProvidersAreAnError(): void {
+    $this->provider();
+
+    $message = $this->whileApiFails('WardenProvider', fn (): \CRM_Utils_Check_Message => $this->message(
+      'warden_providers',
+    ));
+
+    self::assertSame(\Psr\Log\LogLevel::ERROR, $message->getSeverity());
+  }
+
+  private function message(string $name): \CRM_Utils_Check_Message {
+    $found = array_values(array_filter(
+      StatusCheck::messages(),
+      static fn (\CRM_Utils_Check_Message $message): bool => $message->getName() === $name,
+    ));
+    self::assertCount(1, $found, 'expected one message named ' . $name . ' among: ' . implode(', ', $this->names()));
+
+    return $found[0];
+  }
+
+  /**
+   * @template T
+   *
+   * @param callable(): T $body
+   *
+   * @return T
+   */
+  private function whileApiFails(string $entity, callable $body): mixed {
+    $failure = new FailingApi($entity);
+    \Civi::dispatcher()->addListener('civi.api.prepare', [$failure, 'onPrepare']);
+
+    try {
+      return $body();
+    }
+    finally {
+      \Civi::dispatcher()->removeListener('civi.api.prepare', [$failure, 'onPrepare']);
+    }
   }
 
   public function testCoreHooksExposePermissionsAndStatusMessages(): void {
