@@ -5,6 +5,8 @@ identity provider such as Keycloak or Microsoft Entra ID. It links each CiviCRM
 user to the provider's stable `iss`/`sub` pair, can create users on first login,
 maps provider claims to CiviCRM roles, and keeps its own login trail.
 
+Documentation: https://civico-de.github.io/warden/
+
 Warden is not tied to a vendor: every provider goes through the same discovery,
 authorization-code flow with PKCE and signed-ID-token validation. The protocol
 implementation is
