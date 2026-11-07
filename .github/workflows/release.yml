@@ -25,7 +25,9 @@ jobs:
       contents: write        # a called workflow can only narrow this
     uses: civico-de/civikitchen/.github/workflows/extension-release.yml@v1
 # END CIVIKITCHEN MANAGED caller
+    # Public repo: GitHub-hosted runners only, since fork PRs would run on a self-hosted one.
     with:
+      runs_on: ubuntu-latest
       # Warden requires vendor/autoload.php before CiviCRM can enable it. The
       # shared workflow installs the lockfile, bundles the production vendor/
       # tree and smoke-installs that exact archive in a fresh site.

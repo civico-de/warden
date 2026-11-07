@@ -37,7 +37,9 @@ jobs:
   ci:
     uses: civico-de/civikitchen/.github/workflows/extension-ci.yml@v1
 # END CIVIKITCHEN MANAGED caller
+    # Public repo: GitHub-hosted runners only, since fork PRs would run on a self-hosted one.
     with:
+      runs_on: ubuntu-latest
       composer_install: true
       lifecycle: true
       extra_phpunit_config: phpunit-unit.xml.dist
@@ -46,6 +48,7 @@ jobs:
     name: Keycloak browser E2E
     uses: civico-de/civikitchen/.github/workflows/playwright-e2e.yml@v1
     with:
+      runs_on: ubuntu-latest
       working_directory: .
       cache_dependency_path: tests/e2e/keycloak/package-lock.json
       install_command: composer install --no-interaction --no-progress
@@ -60,6 +63,7 @@ jobs:
     name: Entra profile browser E2E
     uses: civico-de/civikitchen/.github/workflows/playwright-e2e.yml@v1
     with:
+      runs_on: ubuntu-latest
       working_directory: .
       # No lockfile of its own: docker-compose.entra.yml copies the Keycloak
       # suite's package.json + package-lock.json into the Playwright container.
