@@ -106,6 +106,8 @@ For authorization, prefer Entra **App Roles**. Define values such as `CiviCRM.St
 }
 ```
 
-Mapping the `groups` claim with group object IDs also works, but Entra leaves that claim out when someone belongs to too many groups. Warden then refuses the login rather than reading the missing claim as "no roles".
+Mapping the `groups` claim with group object IDs also works, but Entra leaves that claim out when someone belongs to too many groups. Warden does not query Microsoft Graph for the missing groups. It refuses the login rather than reading the missing claim as "no roles".
 
 Logging out of CiviCRM ends the Entra session too. A logout started in another Entra-connected application does not end the CiviCRM session, because Entra offers that only through front-channel logout, which Warden does not support, see [Single logout](operations.md#single-logout).
+
+Microsoft documents the [tenant-scoped OpenID Connect endpoints](https://learn.microsoft.com/en-us/entra/identity-platform/v2-protocols-oidc), the [ID token claims](https://learn.microsoft.com/en-us/entra/identity-platform/id-token-claims-reference) and [group claims and their limit](https://learn.microsoft.com/en-us/entra/identity-platform/optional-claims).

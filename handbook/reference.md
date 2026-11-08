@@ -76,6 +76,8 @@ Civi::dispatcher()->addListener(ResolveUserEvent::NAME, function (ResolveUserEve
 - ID tokens are accepted only after issuer, audience, signature and time claims are validated against the provider's published signing keys.
 - Back-channel logout tokens are validated the same way, checked against replay by their `jti`, and matched to hashed local session bindings.
 - Users are linked by the stable issuer and subject pair, never by an unverified email address alone.
+- The login and callback routes are rate-limited per source address, see [Rate limiting](operations.md#rate-limiting).
+- Client secrets are stored encrypted through CiviCRM's credential mechanism. Do not put them into exported managed configuration.
 - A user deactivated in CiviCRM is refused even when their identity is linked.
 - Role mapping is an allow-list of CiviCRM role names; a provider cannot name a permission.
 

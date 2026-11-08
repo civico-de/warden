@@ -19,7 +19,7 @@ Für die Gegenrichtung registrieren Sie beim Anbieter die Back-Channel-Logout-UR
 https://IHR-CIVICRM/civicrm/warden/logout/backchannel
 ```
 
-Der Anbieter schickt Warden dann ein signiertes Logout-Token. Warden prüft Signatur und Claims, lehnt ein bereits gesehenes Token ab und markiert die passende CiviCRM-Sitzung als widerrufen. Diese Sitzung endet bei ihrer nächsten Anfrage, bevor die angeforderte Seite läuft, nicht schon im Moment, in dem das Token eintrifft.
+Der Anbieter schickt Warden dann ein signiertes Logout-Token. Warden prüft Signatur und Claims, lehnt ein bereits gesehenes Token ab und markiert die passende CiviCRM-Sitzung als widerrufen. Diese Sitzung endet bei ihrer nächsten Anfrage, bevor die angeforderte Seite läuft, nicht schon im Moment, in dem das Token eintrifft: Eine andere Anfrage kommt nicht portabel an den Sitzungsspeicher von PHP heran.
 
 Warden speichert nur Hashes der lokalen Sitzung, des Subjekts und der Sitzung beim Anbieter. Sitzungsbindungen, die seit `warden_session_retention_days` nicht mehr gesehen wurden, löscht der tägliche Job; eine ältere Sitzung lässt sich vom Anbieter aus nicht mehr beenden.
 

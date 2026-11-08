@@ -106,6 +106,8 @@ Für die Berechtigungen sind Entra-**App-Rollen** vorzuziehen. Legen Sie Werte w
 }
 ```
 
-Eine Zuordnung über den Claim `groups` mit Gruppen-Objekt-IDs funktioniert ebenfalls, aber Entra lässt diesen Claim weg, wenn jemand zu vielen Gruppen angehört. Warden weist die Anmeldung dann ab, statt den fehlenden Claim als „keine Rollen“ zu lesen.
+Eine Zuordnung über den Claim `groups` mit Gruppen-Objekt-IDs funktioniert ebenfalls, aber Entra lässt diesen Claim weg, wenn jemand zu vielen Gruppen angehört. Warden fragt die fehlenden Gruppen nicht bei Microsoft Graph ab. Es weist die Anmeldung ab, statt den fehlenden Claim als „keine Rollen“ zu lesen.
 
 Die Abmeldung aus CiviCRM beendet auch die Entra-Sitzung. Eine Abmeldung, die in einer anderen an Entra angeschlossenen Anwendung beginnt, beendet die CiviCRM-Sitzung nicht, denn Entra bietet das nur über Front-Channel-Logout an, das Warden nicht unterstützt, siehe [Single Logout](operations.md#single-logout).
+
+Microsoft beschreibt die [mandantenspezifischen OpenID-Connect-Endpunkte](https://learn.microsoft.com/de-de/entra/identity-platform/v2-protocols-oidc), die [Claims im ID-Token](https://learn.microsoft.com/de-de/entra/identity-platform/id-token-claims-reference) und [Gruppen-Claims und ihre Obergrenze](https://learn.microsoft.com/de-de/entra/identity-platform/optional-claims).

@@ -19,7 +19,7 @@ For the other direction, register Warden's back-channel logout URL at the provid
 https://YOUR-CIVICRM/civicrm/warden/logout/backchannel
 ```
 
-The provider then sends Warden a signed logout token. Warden validates its signature and claims, rejects a token it has seen before, and marks the matching CiviCRM session as revoked. That session ends on its next request, before the requested page runs, not at the moment the token arrives.
+The provider then sends Warden a signed logout token. Warden validates its signature and claims, rejects a token it has seen before, and marks the matching CiviCRM session as revoked. That session ends on its next request, before the requested page runs, not at the moment the token arrives: another request cannot reach PHP's session storage in a portable way.
 
 Warden stores only hashes of the local session, the subject and the provider session. Session bindings that have not been seen for `warden_session_retention_days` are deleted by the daily job; a session older than that can no longer be ended from the provider.
 

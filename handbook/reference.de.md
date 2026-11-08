@@ -76,6 +76,8 @@ Civi::dispatcher()->addListener(ResolveUserEvent::NAME, function (ResolveUserEve
 - ID-Tokens werden erst angenommen, wenn Issuer, Audience, Signatur und Zeit-Claims gegen die veröffentlichten Signaturschlüssel des Anbieters geprüft sind.
 - Back-Channel-Logout-Tokens werden genauso geprüft, über ihre `jti` gegen Wiederverwendung gesichert und gehashten lokalen Sitzungsbindungen zugeordnet.
 - Benutzer werden über das dauerhafte Paar aus Issuer und Subjekt verknüpft, nie über eine unbestätigte E-Mail-Adresse allein.
+- Die Anmelde- und Callback-Routen sind je Quelladresse begrenzt, siehe [Begrenzung von Anmeldeversuchen](operations.md#begrenzung-von-anmeldeversuchen).
+- Client Secrets werden über den Credential-Mechanismus von CiviCRM verschlüsselt gespeichert. Legen Sie sie nicht in exportierte Managed-Konfiguration.
 - Ein in CiviCRM deaktivierter Benutzer wird abgewiesen, auch wenn seine Identität verknüpft ist.
 - Die Rollenzuordnung ist eine Positivliste von CiviCRM-Rollennamen; ein Anbieter kann keine Berechtigung nennen.
 

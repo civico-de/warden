@@ -47,7 +47,7 @@ A git checkout needs `composer install --no-dev` first.
    secret. Leave the mode at `optional`.
 4. Sign in through the new button on the login screen. An unknown person is
    refused until you either link their identity or allow provisioning — see
-   [Configuration](docs/configuration.md).
+   [Who may sign in](https://civico-de.github.io/warden/configuration/#who-may-sign-in).
 5. Check **Administer → Administration Console → System Status** for Warden
    messages, and the login trail for what happened.
 
@@ -76,11 +76,9 @@ procedure.
 
 | Document | Covers |
 |---|---|
-| [Configuration](docs/configuration.md) | Provider fields, modes, provisioning, linking, role mapping, settings, permissions |
-| [Single logout](docs/single-logout.md) | Logout in both directions and the back-channel logout URL |
-| [Microsoft Entra ID](docs/entra.md) | App registration, issuer, App Roles, Entra-specific limits |
-| [Operations](docs/operations.md) | System status checks, login trail, retention, rate limiting |
-| [Security model](docs/security.md) | What Warden validates and what it never stores |
+| [Configuration](https://civico-de.github.io/warden/configuration/) | Provider fields, modes, who may sign in, role mapping, profile sync, Microsoft Entra ID |
+| [Operations](https://civico-de.github.io/warden/operations/) | Single logout, status checks, login trail, retention, rate limiting |
+| [Reference](https://civico-de.github.io/warden/reference/) | Permissions, settings, URLs, events, security model |
 | [Development](docs/development.md) | Test suites and design decisions |
 
 ## License and support
