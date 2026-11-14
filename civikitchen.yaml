@@ -5,6 +5,8 @@ policy:
   license: AGPL-3.0
   npm_license: AGPL-3.0
   copyright: 'civico GmbH'
+  # Lowest CiviCRM minor info.xml may declare: the supported ESR.
+  civicrm_floor: "6.16"
 
   # Ratchet up, never down to make a red build green.
   coverage:
