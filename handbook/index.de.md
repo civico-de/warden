@@ -4,6 +4,8 @@ title: Warden
 
 # Warden
 
+![Warden: Keycloak, Microsoft Entra ID oder ein anderer OpenID-Connect-Anbieter meldet Menschen als CiviCRM-Benutzer mit Rollen und Anmeldeprotokoll an](images/cover.png)
+
 Mit Warden melden sich Menschen über einen OpenID-Connect-Identitätsanbieter wie Keycloak oder Microsoft Entra ID bei CiviCRM Standalone an. Warden verknüpft jeden CiviCRM-Benutzer mit dem dauerhaften Paar aus Aussteller (Issuer) und Subjekt des Anbieters, kann Benutzer bei ihrer ersten Anmeldung anlegen, ordnet Claims des Anbieters CiviCRM-Rollen zu und führt ein eigenes Anmeldeprotokoll.
 
 Warden ist an keinen Hersteller gebunden: Jeder Anbieter durchläuft dieselbe Discovery, denselben Authorization-Code-Flow mit PKCE und dieselbe Prüfung des signierten ID-Tokens. Gedacht ist Warden für Organisationen, die die Konten ihrer Mitarbeitenden bereits in einem Identitätsanbieter verwalten und CiviCRM daran anschließen wollen.

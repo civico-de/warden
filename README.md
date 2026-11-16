@@ -1,3 +1,5 @@
+![Warden: Keycloak, Microsoft Entra ID or any OpenID Connect provider signs people in as CiviCRM users with roles and a login trail](handbook/images/cover.png)
+
 # Warden
 
 Warden lets people sign in to CiviCRM Standalone through an OpenID Connect

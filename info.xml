@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <extension key="warden" type="module">
   <file>warden</file>
-  <name>warden</name>
+  <name>Warden</name>
   <description>OpenID Connect single sign-on for CiviCRM Standalone: discovery, PKCE, nonce and full ID-token signature validation, sub-keyed identity linking, provisioning and role mapping, with its own audit trail and rate limiting.</description>
   <license>AGPL-3.0</license>
   <authors>
