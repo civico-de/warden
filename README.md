@@ -2,6 +2,8 @@
 
 # Warden
 
+> **Status: alpha.** Settings, APIs and stored data can still change between releases. Try it on a test site before you use it in production.
+
 Warden lets people sign in to CiviCRM Standalone through an OpenID Connect
 identity provider such as Keycloak or Microsoft Entra ID. It links each CiviCRM
 user to the provider's stable `iss`/`sub` pair, can create users on first login,
