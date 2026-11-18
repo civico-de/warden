@@ -1,4 +1,4 @@
-![Warden: Keycloak, Microsoft Entra ID or any OpenID Connect provider signs people in as CiviCRM users with roles and a login trail](handbook/images/cover.png)
+![Warden: Keycloak, Microsoft Entra ID or any OpenID Connect provider signs people in as CiviCRM users with roles and a login trail](docs/handbook/images/cover.png)
 
 # Warden
 
