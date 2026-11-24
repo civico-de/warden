@@ -33,7 +33,6 @@ parameters:
 			# phpstan-tests.neon.dist analyses the suite in a second pass
 			- tests (?)
 		analyseAndScan:
-			- phpstanBootstrap.php
 			- vendor (?)
 			- node_modules (?)
 			- build (?)
@@ -53,7 +52,7 @@ parameters:
 		- /var/www/html/core/ext/standaloneusers/CRM
 		- /var/www/html/core/ext/authx/Civi
 	bootstrapFiles:
-		- phpstanBootstrap.php
+		- /opt/civikitchen/toolbelt/phpstan-config/bootstrap.php
 	civikitchen:
 		# ck.sql.unknownTable checks `civicrm_`-prefixed table names in raw SQL
 		# against core's schema plus this repo's own (schema/, xml/schema/,
