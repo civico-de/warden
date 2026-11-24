@@ -68,3 +68,10 @@ parameters:
 	# ignoreErrors: only ever narrowly scoped (identifier + path + count) and
 	# carrying a comment that says WHY the report is wrong — never blanket
 	# patterns, never a baseline file.
+	ignoreErrors:
+		# Pins core's settings screen to the warden group; a menu page_callback
+		# replacing CRM_Admin_Form_Generic must be a CRM_Core_Form subclass.
+		-
+			identifier: phpat.testNoLegacyUiBases
+			path: CRM/Warden/Form/Settings.php
+			count: 1

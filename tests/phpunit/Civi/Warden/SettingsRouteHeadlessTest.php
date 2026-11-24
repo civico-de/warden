@@ -29,6 +29,7 @@ final class SettingsRouteHeadlessTest extends TestCase implements HeadlessInterf
 
   public function testTheSettingsScreenResolvesWardenSettings(): void {
     $item = \CRM_Core_Invoke::getItem('civicrm/admin/setting/warden');
+    self::assertIsArray($item);
     self::assertSame(\CRM_Warden_Form_Settings::class, $item['page_callback']);
 
     $form = new \CRM_Warden_Form_Settings();
