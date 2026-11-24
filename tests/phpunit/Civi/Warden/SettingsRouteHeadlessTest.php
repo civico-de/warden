@@ -27,22 +27,14 @@ final class SettingsRouteHeadlessTest extends TestCase implements HeadlessInterf
       ->apply();
   }
 
-  /**
-   * The generic settings form finds warden's settings.
-   *
-   * warden declares `civicrm/admin/setting/warden` itself in xml/Menu (it
-   * needs a menu file anyway for the two login routes), which is why it does
-   * NOT carry the `setting-admin` mixin the way sunset does — that mixin
-   * creates the same route, and declaring both would be two rows for one path.
-   *
-   * The form derives which settings to show from the LAST component of
-   * `urlPath`, so this pins both halves at once: the route the nav item points
-   * at, and the `settings_pages` key every setting declares.
-   */
   public function testTheSettingsScreenResolvesWardenSettings(): void {
-    $form = new \CRM_Admin_Form_Generic();
-    // Populated by the invoke chain on a real request.
-    $form->urlPath = explode('/', 'civicrm/admin/setting/warden');
+    $item = \CRM_Core_Invoke::getItem('civicrm/admin/setting/warden');
+    self::assertSame(\CRM_Warden_Form_Settings::class, $item['page_callback']);
+
+    $form = new \CRM_Warden_Form_Settings();
+    $form->urlPath = explode('/', 'civicrm/admin/setting/warden/extra');
+    self::assertSame('warden', $form->getSettingPageFilter());
+    self::assertSame('CRM/Admin/Form/Generic.tpl', $form->getTemplateFileName());
     $form->preProcess();
 
     $property = new \ReflectionProperty(\CRM_Admin_Form_Generic::class, '_settings');
