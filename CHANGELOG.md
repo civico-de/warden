@@ -2,9 +2,15 @@
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-11-24
+
 ### Changed
 
 - The manual lives in `docs/handbook/`. CiviCRM shows it with handbook 0.5.0 or newer.
+
+### Fixed
+
+- Warden uses a dedicated form for its settings page.
 
 ## [0.6.0] - 2026-10-26
 
@@ -126,7 +132,8 @@
   checks.
 - Client secrets encrypted with `CIVICRM_CRED_KEYS`.
 
-[Unreleased]: https://github.com/civico-de/warden/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/civico-de/warden/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/civico-de/warden/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/civico-de/warden/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/civico-de/warden/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/civico-de/warden/compare/v0.3.3...v0.4.0
